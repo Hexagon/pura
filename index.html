@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CrimShop - Image Editor</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Top Toolbar -->
+        <div class="toolbar">
+            <div class="toolbar-section">
+                <button class="tool-btn" id="newBtn" title="New Image">
+                    <span>📄</span> New
+                </button>
+                <button class="tool-btn" id="openBtn" title="Open Image">
+                    <span>📂</span> Open
+                </button>
+                <button class="tool-btn" id="saveBtn" title="Save Image">
+                    <span>💾</span> Save
+                </button>
+            </div>
+            <div class="toolbar-section">
+                <button class="tool-btn" id="undoBtn" title="Undo">
+                    <span>↶</span> Undo
+                </button>
+                <button class="tool-btn" id="redoBtn" title="Redo">
+                    <span>↷</span> Redo
+                </button>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <!-- Left Sidebar - Tools -->
+            <div class="sidebar left-sidebar">
+                <h3>Tools</h3>
+                <div class="tool-group">
+                    <button class="tool-btn active" data-tool="select" title="Select/Move">
+                        <span>🔲</span> Select
+                    </button>
+                    <button class="tool-btn" data-tool="brush" title="Brush">
+                        <span>🖌️</span> Brush
+                    </button>
+                    <button class="tool-btn" data-tool="eraser" title="Eraser">
+                        <span>🧹</span> Eraser
+                    </button>
+                    <button class="tool-btn" data-tool="rect" title="Rectangle">
+                        <span>⬜</span> Rect
+                    </button>
+                    <button class="tool-btn" data-tool="circle" title="Circle">
+                        <span>⭕</span> Circle
+                    </button>
+                    <button class="tool-btn" data-tool="line" title="Line">
+                        <span>📏</span> Line
+                    </button>
+                    <button class="tool-btn" data-tool="text" title="Text">
+                        <span>T</span> Text
+                    </button>
+                </div>
+                
+                <h3>Color</h3>
+                <div class="color-picker-group">
+                    <label>Foreground:</label>
+                    <input type="color" id="foregroundColor" value="#000000">
+                    <label>Background:</label>
+                    <input type="color" id="backgroundColor" value="#FFFFFF">
+                </div>
+                
+                <h3>Brush Settings</h3>
+                <div class="settings-group">
+                    <label>Size: <span id="brushSizeValue">10</span>px</label>
+                    <input type="range" id="brushSize" min="1" max="100" value="10">
+                    <label>Opacity: <span id="opacityValue">100</span>%</label>
+                    <input type="range" id="opacity" min="0" max="100" value="100">
+                </div>
+            </div>
+
+            <!-- Canvas Area -->
+            <div class="canvas-container">
+                <div class="canvas-wrapper" id="canvasWrapper">
+                    <canvas id="mainCanvas"></canvas>
+                </div>
+            </div>
+
+            <!-- Right Sidebar - Layers and Effects -->
+            <div class="sidebar right-sidebar">
+                <h3>Layers</h3>
+                <div class="layers-panel" id="layersPanel">
+                    <div class="layer-item active" data-layer-id="0">
+                        <input type="checkbox" checked class="layer-visibility" data-layer-id="0">
+                        <span class="layer-name">Background</span>
+                        <button class="layer-delete" data-layer-id="0">×</button>
+                    </div>
+                </div>
+                <div class="layer-controls">
+                    <button class="tool-btn" id="addLayerBtn">+ Add Layer</button>
+                    <button class="tool-btn" id="mergeLayersBtn">Merge Down</button>
+                </div>
+
+                <h3>Transforms</h3>
+                <div class="transform-controls">
+                    <button class="tool-btn" id="resizeBtn">Resize</button>
+                    <button class="tool-btn" id="rotateBtn">Rotate 90°</button>
+                    <button class="tool-btn" id="flipHBtn">Flip H</button>
+                    <button class="tool-btn" id="flipVBtn">Flip V</button>
+                </div>
+
+                <h3>Effects</h3>
+                <div class="effects-panel">
+                    <button class="tool-btn" id="brightnessBtn">Brightness</button>
+                    <button class="tool-btn" id="contrastBtn">Contrast</button>
+                    <button class="tool-btn" id="grayscaleBtn">Grayscale</button>
+                    <button class="tool-btn" id="invertBtn">Invert</button>
+                    <button class="tool-btn" id="blurBtn">Blur</button>
+                    <button class="tool-btn" id="sharpenBtn">Sharpen</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- File Input (Hidden) -->
+    <input type="file" id="fileInput" accept="image/*" style="display: none;">
+
+    <!-- Modals -->
+    <div id="newImageModal" class="modal">
+        <div class="modal-content">
+            <h2>New Image</h2>
+            <label>Width: <input type="number" id="newWidth" value="800" min="1"></label>
+            <label>Height: <input type="number" id="newHeight" value="600" min="1"></label>
+            <label>Background: <input type="color" id="newBgColor" value="#FFFFFF"></label>
+            <div class="modal-buttons">
+                <button id="createNewBtn">Create</button>
+                <button id="cancelNewBtn">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="resizeModal" class="modal">
+        <div class="modal-content">
+            <h2>Resize Layer</h2>
+            <label>Width: <input type="number" id="resizeWidth" min="1"></label>
+            <label>Height: <input type="number" id="resizeHeight" min="1"></label>
+            <label>
+                <input type="checkbox" id="maintainAspect" checked>
+                Maintain Aspect Ratio
+            </label>
+            <div class="modal-buttons">
+                <button id="applyResizeBtn">Apply</button>
+                <button id="cancelResizeBtn">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="effectModal" class="modal">
+        <div class="modal-content">
+            <h2 id="effectTitle">Effect</h2>
+            <label id="effectLabel">Amount: <span id="effectValue">50</span></label>
+            <input type="range" id="effectSlider" min="0" max="100" value="50">
+            <div class="modal-buttons">
+                <button id="applyEffectBtn">Apply</button>
+                <button id="cancelEffectBtn">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="app.js"></script>
+</body>
+</html>
