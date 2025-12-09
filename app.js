@@ -1,5 +1,13 @@
-// Import cross-image from jsdelivr CDN
-import { Image } from 'https://cdn.jsdelivr.net/npm/cross-image@0.2.2/esm/mod.js';
+// Import cross-image - try CDN first, fallback to local vendor copy
+let Image;
+try {
+    const module = await import('https://cdn.jsdelivr.net/npm/cross-image@0.2.2/esm/mod.js');
+    Image = module.Image;
+} catch (e) {
+    console.warn('CDN blocked, using local vendor copy:', e.message);
+    const module = await import('./vendor/cross-image/mod.js');
+    Image = module.Image;
+}
 
 // Application state
 const state = {
