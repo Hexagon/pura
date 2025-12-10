@@ -1,5 +1,5 @@
 // Import cross-image from jsdelivr CDN
-import { Image } from 'https://cdn.jsdelivr.net/npm/cross-image@0.2.2/esm/mod.js';
+import { Image } from 'https://cdn.jsdelivr.net/npm/cross-image@0.2.3/esm/mod.js';
 
 // Constants
 const MIN_LAYER_DURATION = 10;
@@ -31,25 +31,41 @@ function createWorkspaceState(canvas, ctx) {
         historyIndex: -1,
         maxHistory: 50,
         metadata: {
-            // Basic fields
+            // Basic information
             title: '',
-            author: '',
             description: '',
+            author: '',
             copyright: '',
-            // Standard EXIF fields
-            artist: '',
             software: 'CrimShop',
-            dateTime: '',
-            make: '',
-            model: '',
-            orientation: '',
-            xResolution: '',
-            yResolution: '',
-            resolutionUnit: '',
-            keywords: '',
-            comment: ''
+            userComment: '',
+            creationDate: null,
+            
+            // GPS coordinates
+            latitude: null,
+            longitude: null,
+            
+            // Camera settings
+            cameraMake: '',
+            cameraModel: '',
+            lensMake: '',
+            lensModel: '',
+            iso: null,
+            exposureTime: null,
+            fNumber: null,
+            focalLength: null,
+            flash: null,
+            whiteBalance: null,
+            orientation: null,
+            
+            // Technical
+            dpiX: null,
+            dpiY: null,
+            physicalWidth: null,
+            physicalHeight: null,
+            
+            // Custom fields (stored in a sub-object per cross-image spec)
+            custom: {}
         },
-        customMetadataFields: [], // Array of custom field names
         previewCanvas: null,
         previewCtx: null,
         moveOffsetX: 0,
@@ -703,7 +719,13 @@ async function handleFileUpload(e) {
             layer.id = index;
         });
         
+        // Load metadata from image if available
+        if (image.metadata) {
+            workspaceState.metadata = mergeMetadata(workspaceState.metadata, image.metadata);
+        }
+        
         updateLayersPanel();
+        updateMetadataTable();
         composeLayers();
         saveState();
     } catch (error) {
@@ -891,9 +913,11 @@ async function applySaveImage() {
                 new Uint8Array(imageData.data)
             );
             
-            // Apply metadata if available
-            if (state.metadata.title || state.metadata.author || state.metadata.description) {
-                image.metadata = { ...state.metadata };
+            // Apply metadata if available using setMetadata method
+            if (hasMetadata(state.metadata)) {
+                // Clean metadata - remove null/undefined/empty values
+                const cleanMetadata = cleanMetadataForExport(state.metadata);
+                image.setMetadata(cleanMetadata, false);
             }
             
             // Save in selected format
@@ -1312,41 +1336,152 @@ function updatePreviewCanvasSize() {
     }
 }
 
+// Metadata Helper Functions
+function hasMetadata(metadata) {
+    // Check if any metadata field has a non-empty value
+    for (const key in metadata) {
+        if (key === 'custom') {
+            if (metadata.custom && Object.keys(metadata.custom).length > 0) {
+                return true;
+            }
+        } else {
+            const value = metadata[key];
+            if (value !== null && value !== undefined && value !== '') {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+function cleanMetadataForExport(metadata) {
+    const cleaned = {};
+    
+    // Copy non-empty values
+    for (const key in metadata) {
+        if (key === 'custom') {
+            // Handle custom fields separately
+            if (metadata.custom && Object.keys(metadata.custom).length > 0) {
+                cleaned.custom = { ...metadata.custom };
+            }
+        } else {
+            const value = metadata[key];
+            // Only include non-null, non-undefined, non-empty values
+            if (value !== null && value !== undefined && value !== '') {
+                cleaned[key] = value;
+            }
+        }
+    }
+    
+    return cleaned;
+}
+
+function mergeMetadata(existingMetadata, newMetadata) {
+    // Create a merged metadata object, preserving existing structure
+    const merged = { ...existingMetadata };
+    
+    // Merge all fields from newMetadata
+    for (const key in newMetadata) {
+        if (key === 'custom') {
+            // Merge custom fields
+            if (newMetadata.custom) {
+                merged.custom = {
+                    ...(merged.custom || {}),
+                    ...newMetadata.custom
+                };
+            }
+        } else if (newMetadata[key] !== null && newMetadata[key] !== undefined && newMetadata[key] !== '') {
+            merged[key] = newMetadata[key];
+        }
+    }
+    
+    return merged;
+}
+
 // Metadata Editor
 function updateMetadataTable() {
     const tbody = document.getElementById('metadataTableBody');
     tbody.innerHTML = '';
     
-    // Standard fields (always shown)
-    const standardFields = [
-        { key: 'title', label: 'Title', type: 'text' },
-        { key: 'author', label: 'Author', type: 'text' },
-        { key: 'description', label: 'Description', type: 'textarea' },
-        { key: 'copyright', label: 'Copyright', type: 'text' },
-        { key: 'artist', label: 'Artist', type: 'text' },
-        { key: 'software', label: 'Software', type: 'text' },
-        { key: 'dateTime', label: 'Date/Time', type: 'text' },
-        { key: 'make', label: 'Make', type: 'text' },
-        { key: 'model', label: 'Model', type: 'text' },
-        { key: 'orientation', label: 'Orientation', type: 'text' },
-        { key: 'xResolution', label: 'X Resolution', type: 'text' },
-        { key: 'yResolution', label: 'Y Resolution', type: 'text' },
-        { key: 'resolutionUnit', label: 'Resolution Unit', type: 'text' },
-        { key: 'keywords', label: 'Keywords', type: 'text' },
-        { key: 'comment', label: 'Comment', type: 'textarea' }
+    // Metadata field groups
+    const metadataGroups = [
+        {
+            name: 'Basic Information',
+            fields: [
+                { key: 'title', label: 'Title', type: 'text' },
+                { key: 'description', label: 'Description', type: 'textarea' },
+                { key: 'author', label: 'Author', type: 'text' },
+                { key: 'copyright', label: 'Copyright', type: 'text' },
+                { key: 'software', label: 'Software', type: 'text' },
+                { key: 'userComment', label: 'User Comment', type: 'textarea' },
+                { key: 'creationDate', label: 'Creation Date', type: 'datetime' }
+            ]
+        },
+        {
+            name: 'GPS Location',
+            fields: [
+                { key: 'latitude', label: 'Latitude', type: 'number' },
+                { key: 'longitude', label: 'Longitude', type: 'number' }
+            ]
+        },
+        {
+            name: 'Camera Settings',
+            fields: [
+                { key: 'cameraMake', label: 'Camera Make', type: 'text' },
+                { key: 'cameraModel', label: 'Camera Model', type: 'text' },
+                { key: 'lensMake', label: 'Lens Make', type: 'text' },
+                { key: 'lensModel', label: 'Lens Model', type: 'text' },
+                { key: 'iso', label: 'ISO', type: 'number' },
+                { key: 'exposureTime', label: 'Exposure Time (s)', type: 'number' },
+                { key: 'fNumber', label: 'F-Number', type: 'number' },
+                { key: 'focalLength', label: 'Focal Length (mm)', type: 'number' },
+                { key: 'flash', label: 'Flash', type: 'number' },
+                { key: 'whiteBalance', label: 'White Balance', type: 'number' },
+                { key: 'orientation', label: 'Orientation', type: 'number' }
+            ]
+        },
+        {
+            name: 'Technical',
+            fields: [
+                { key: 'dpiX', label: 'DPI X', type: 'number' },
+                { key: 'dpiY', label: 'DPI Y', type: 'number' },
+                { key: 'physicalWidth', label: 'Physical Width (in)', type: 'number' },
+                { key: 'physicalHeight', label: 'Physical Height (in)', type: 'number' }
+            ]
+        }
     ];
     
-    // Add standard fields
-    standardFields.forEach(field => {
-        addMetadataRow(tbody, field.key, field.label, field.type, false);
+    // Add each group
+    metadataGroups.forEach(group => {
+        addMetadataGroup(tbody, group.name, group.fields);
     });
     
-    // Add custom fields
-    if (state.customMetadataFields) {
-        state.customMetadataFields.forEach(fieldName => {
-            addMetadataRow(tbody, fieldName, fieldName, 'text', true);
-        });
+    // Add custom fields group
+    if (state.metadata.custom && Object.keys(state.metadata.custom).length > 0) {
+        const customFields = Object.keys(state.metadata.custom).map(key => ({
+            key: key,
+            label: key,
+            type: 'text',
+            isCustom: true
+        }));
+        addMetadataGroup(tbody, 'Custom Fields', customFields);
     }
+}
+
+function addMetadataGroup(tbody, groupName, fields) {
+    // Add group header row
+    const headerRow = document.createElement('tr');
+    headerRow.className = 'metadata-group-header';
+    const headerCell = document.createElement('td');
+    headerCell.colSpan = 2;
+    headerCell.textContent = groupName;
+    headerRow.appendChild(headerCell);
+    tbody.appendChild(headerRow);
+    
+    // Add fields in this group
+    fields.forEach(field => {
+        addMetadataRow(tbody, field.key, field.label, field.type, field.isCustom || false);
+    });
 }
 
 function addMetadataRow(tbody, key, label, type, isCustom) {
@@ -1381,15 +1516,60 @@ function addMetadataRow(tbody, key, label, type, isCustom) {
         input.rows = 2;
     } else {
         input = document.createElement('input');
-        input.type = 'text';
+        if (type === 'number') {
+            input.type = 'number';
+            input.step = 'any';
+        } else if (type === 'datetime') {
+            input.type = 'datetime-local';
+        } else {
+            input.type = 'text';
+        }
     }
     
     input.className = 'metadata-input';
-    input.value = state.metadata[key] || '';
+    
+    // Get value from appropriate location (custom fields are in metadata.custom)
+    let value;
+    if (isCustom) {
+        value = state.metadata.custom?.[key] || '';
+    } else {
+        value = state.metadata[key];
+        // Handle date conversion
+        if (type === 'datetime' && value instanceof Date) {
+            // Convert Date to datetime-local format
+            const year = value.getFullYear();
+            const month = String(value.getMonth() + 1).padStart(2, '0');
+            const day = String(value.getDate()).padStart(2, '0');
+            const hours = String(value.getHours()).padStart(2, '0');
+            const minutes = String(value.getMinutes()).padStart(2, '0');
+            value = `${year}-${month}-${day}T${hours}:${minutes}`;
+        } else if (value === null || value === undefined) {
+            value = '';
+        }
+    }
+    
+    input.value = value;
     input.placeholder = '';
     
     input.addEventListener('input', (e) => {
-        state.metadata[key] = e.target.value;
+        let newValue = e.target.value;
+        
+        // Convert value based on type
+        if (type === 'number') {
+            newValue = newValue === '' ? null : parseFloat(newValue);
+        } else if (type === 'datetime') {
+            newValue = newValue === '' ? null : new Date(newValue);
+        }
+        
+        // Store in appropriate location
+        if (isCustom) {
+            if (!state.metadata.custom) {
+                state.metadata.custom = {};
+            }
+            state.metadata.custom[key] = newValue;
+        } else {
+            state.metadata[key] = newValue;
+        }
     });
     
     tdInput.appendChild(input);
@@ -1413,21 +1593,20 @@ function applyAddMetadataField() {
         return;
     }
     
-    // Check if field already exists
+    // Check if field already exists in standard fields or custom fields
     if (state.metadata.hasOwnProperty(fieldName) || 
-        (state.customMetadataFields && state.customMetadataFields.includes(fieldName))) {
+        (state.metadata.custom && state.metadata.custom.hasOwnProperty(fieldName))) {
         alert('A field with this name already exists');
         return;
     }
     
-    // Initialize customMetadataFields if needed
-    if (!state.customMetadataFields) {
-        state.customMetadataFields = [];
+    // Initialize custom object if needed
+    if (!state.metadata.custom) {
+        state.metadata.custom = {};
     }
     
     // Add to custom fields
-    state.customMetadataFields.push(fieldName);
-    state.metadata[fieldName] = '';
+    state.metadata.custom[fieldName] = '';
     
     updateMetadataTable();
     closeModal('addMetadataFieldModal');
@@ -1435,14 +1614,10 @@ function applyAddMetadataField() {
 
 function removeCustomMetadataField(fieldName) {
     if (confirm(`Remove field "${fieldName}"?`)) {
-        // Remove from custom fields array
-        const index = state.customMetadataFields.indexOf(fieldName);
-        if (index > -1) {
-            state.customMetadataFields.splice(index, 1);
+        // Remove from custom fields
+        if (state.metadata.custom && state.metadata.custom.hasOwnProperty(fieldName)) {
+            delete state.metadata.custom[fieldName];
         }
-        
-        // Remove from metadata
-        delete state.metadata[fieldName];
         
         updateMetadataTable();
     }
