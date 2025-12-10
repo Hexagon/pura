@@ -17,6 +17,9 @@
                 <button class="tool-btn" id="openBtn" title="Open Image">
                     <span>📂</span> Open
                 </button>
+                <button class="tool-btn" id="importLayerBtn" title="Import as Layer">
+                    <span>📥</span> Import Layer
+                </button>
                 <button class="tool-btn" id="saveBtn" title="Save Image">
                     <span>💾</span> Save
                 </button>
@@ -34,6 +37,13 @@
                 <button class="tool-btn" id="redoBtn" title="Redo">
                     <span>↷</span> Redo
                 </button>
+            </div>
+        </div>
+
+        <!-- Tab Bar -->
+        <div class="tab-bar" id="tabBar">
+            <div class="tab active" data-tab-id="start">
+                <span class="tab-name">Start</span>
             </div>
         </div>
 
@@ -88,7 +98,32 @@
 
             <!-- Canvas Area -->
             <div class="canvas-container">
-                <div class="canvas-wrapper" id="canvasWrapper">
+                <!-- Start Screen -->
+                <div id="startScreen" class="start-screen">
+                    <div class="start-content">
+                        <h1>CrimShop Image Editor</h1>
+                        <p>Create a new image or open an existing one to get started</p>
+                        <div class="start-actions">
+                            <button class="start-btn" id="startNewBtn">
+                                <span>📄</span>
+                                <div>
+                                    <strong>New Image</strong>
+                                    <small>Create a blank canvas</small>
+                                </div>
+                            </button>
+                            <button class="start-btn" id="startOpenBtn">
+                                <span>📂</span>
+                                <div>
+                                    <strong>Open Image</strong>
+                                    <small>Load an existing image</small>
+                                </div>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Canvas Wrapper -->
+                <div class="canvas-wrapper" id="canvasWrapper" style="display: none;">
                     <canvas id="mainCanvas"></canvas>
                 </div>
             </div>
@@ -132,6 +167,7 @@
 
     <!-- File Input (Hidden) -->
     <input type="file" id="fileInput" accept="image/*" style="display: none;">
+    <input type="file" id="importLayerInput" accept="image/*" style="display: none;">
 
     <!-- Modals -->
     <div id="newImageModal" class="modal">

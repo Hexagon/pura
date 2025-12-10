@@ -68,6 +68,162 @@ body {
     overflow: hidden;
 }
 
+/* Tab Bar */
+.tab-bar {
+    background: #252525;
+    border-bottom: 1px solid #3d3d3d;
+    display: flex;
+    padding: 0 10px;
+    gap: 2px;
+    overflow-x: auto;
+    flex-shrink: 0;
+}
+
+.tab {
+    background: #2d2d2d;
+    border: 1px solid #3d3d3d;
+    border-bottom: none;
+    padding: 8px 12px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 120px;
+    max-width: 200px;
+    border-radius: 4px 4px 0 0;
+    margin-top: 2px;
+    transition: all 0.2s;
+}
+
+.tab:hover {
+    background: #3d3d3d;
+}
+
+.tab.active {
+    background: #1e1e1e;
+    border-color: #0066cc;
+    border-bottom: 1px solid #1e1e1e;
+    margin-top: 0;
+    padding-top: 10px;
+}
+
+.tab-name {
+    flex: 1;
+    font-size: 13px;
+    color: #e0e0e0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tab-close {
+    background: transparent;
+    border: none;
+    color: #888;
+    cursor: pointer;
+    font-size: 16px;
+    line-height: 1;
+    padding: 0;
+    width: 16px;
+    height: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 3px;
+    transition: all 0.2s;
+}
+
+.tab-close:hover {
+    background: #d32f2f;
+    color: white;
+}
+
+.tab.start-tab .tab-close {
+    display: none;
+}
+
+/* Start Screen */
+.start-screen {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    background: #1a1a1a;
+}
+
+.start-content {
+    text-align: center;
+    max-width: 600px;
+    padding: 40px;
+}
+
+.start-content h1 {
+    font-size: 36px;
+    margin-bottom: 20px;
+    color: #e0e0e0;
+}
+
+.start-content p {
+    font-size: 16px;
+    color: #b0b0b0;
+    margin-bottom: 40px;
+}
+
+.start-actions {
+    display: flex;
+    gap: 20px;
+    justify-content: center;
+}
+
+.start-btn {
+    background: #2d2d2d;
+    border: 2px solid #4d4d4d;
+    padding: 20px 30px;
+    cursor: pointer;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    transition: all 0.3s;
+    color: #e0e0e0;
+    min-width: 200px;
+}
+
+.start-btn:hover {
+    background: #3d3d3d;
+    border-color: #0066cc;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 102, 204, 0.3);
+}
+
+.start-btn span {
+    font-size: 32px;
+}
+
+.start-btn div {
+    text-align: left;
+}
+
+.start-btn strong {
+    display: block;
+    font-size: 16px;
+    margin-bottom: 4px;
+}
+
+.start-btn small {
+    display: block;
+    font-size: 12px;
+    color: #888;
+}
+
+/* Main Content */
+.main-content {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+}
+
 /* Sidebars */
 .sidebar {
     background: #252525;

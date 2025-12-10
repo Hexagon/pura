@@ -5,69 +5,281 @@ import { Image } from 'https://cdn.jsdelivr.net/npm/cross-image@0.2.2/esm/mod.js
 const MIN_LAYER_DURATION = 10;
 const MULTI_FRAME_FORMATS = ['gif', 'apng', 'tiff'];
 
-// Application state
-const state = {
-    canvas: null,
-    ctx: null,
-    layers: [],
-    activeLayerIndex: 0,
-    tool: 'select',
-    isDrawing: false,
-    startX: 0,
-    startY: 0,
-    foregroundColor: '#000000',
-    backgroundColor: '#FFFFFF',
-    brushSize: 10,
-    opacity: 1.0,
-    history: [],
-    historyIndex: -1,
-    maxHistory: 50,
-    metadata: {
-        title: '',
-        author: '',
-        description: '',
-        copyright: ''
-    },
-    // Preview and move tool state
-    previewCanvas: null,
-    previewCtx: null,
-    moveOffsetX: 0,
-    moveOffsetY: 0
+// Global state for managing workspaces
+const globalState = {
+    workspaces: new Map(),
+    activeWorkspaceId: 'start',
+    nextWorkspaceId: 1
 };
+
+// Create a workspace state object
+function createWorkspaceState(canvas, ctx) {
+    return {
+        canvas: canvas,
+        ctx: ctx,
+        layers: [],
+        activeLayerIndex: 0,
+        tool: 'select',
+        isDrawing: false,
+        startX: 0,
+        startY: 0,
+        foregroundColor: '#000000',
+        backgroundColor: '#FFFFFF',
+        brushSize: 10,
+        opacity: 1.0,
+        history: [],
+        historyIndex: -1,
+        maxHistory: 50,
+        metadata: {
+            title: '',
+            author: '',
+            description: '',
+            copyright: ''
+        },
+        previewCanvas: null,
+        previewCtx: null,
+        moveOffsetX: 0,
+        moveOffsetY: 0
+    };
+}
+
+// Get current workspace state
+function getState() {
+    return globalState.workspaces.get(globalState.activeWorkspaceId);
+}
+
+// Application state (for backwards compatibility, now points to active workspace)
+let state = null;
 
 // Initialize the application
 function init() {
-    state.canvas = document.getElementById('mainCanvas');
-    state.ctx = state.canvas.getContext('2d', { willReadFrequently: true });
+    // Create the start workspace
+    const canvas = document.getElementById('mainCanvas');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
     
-    // Set default canvas size
-    state.canvas.width = 800;
-    state.canvas.height = 600;
+    const startState = createWorkspaceState(canvas, ctx);
+    globalState.workspaces.set('start', startState);
+    state = startState;
+    
+    setupEventListeners();
+    restoreUIState();
+    updateTabBar();
+    
+    // Show start screen
+    showStartScreen();
+}
+
+// Workspace Management
+function showStartScreen() {
+    document.getElementById('startScreen').style.display = 'flex';
+    document.getElementById('canvasWrapper').style.display = 'none';
+}
+
+function hideStartScreen() {
+    document.getElementById('startScreen').style.display = 'none';
+    document.getElementById('canvasWrapper').style.display = 'block';
+}
+
+function createWorkspace(name, width = 800, height = 600, bgColor = '#FFFFFF') {
+    const workspaceId = `workspace-${globalState.nextWorkspaceId++}`;
+    
+    const canvas = document.getElementById('mainCanvas');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    
+    // Set canvas size
+    canvas.width = width;
+    canvas.height = height;
+    
+    // Create workspace state
+    const workspaceState = createWorkspaceState(canvas, ctx);
     
     // Create preview canvas overlay
-    state.previewCanvas = document.createElement('canvas');
-    state.previewCanvas.width = state.canvas.width;
-    state.previewCanvas.height = state.canvas.height;
-    state.previewCanvas.style.position = 'absolute';
-    state.previewCanvas.style.pointerEvents = 'none';
-    state.previewCanvas.style.top = '0';
-    state.previewCanvas.style.left = '0';
-    state.previewCtx = state.previewCanvas.getContext('2d', { willReadFrequently: true });
+    workspaceState.previewCanvas = document.createElement('canvas');
+    workspaceState.previewCanvas.width = width;
+    workspaceState.previewCanvas.height = height;
+    workspaceState.previewCanvas.style.position = 'absolute';
+    workspaceState.previewCanvas.style.pointerEvents = 'none';
+    workspaceState.previewCanvas.style.top = '0';
+    workspaceState.previewCanvas.style.left = '0';
+    workspaceState.previewCtx = workspaceState.previewCanvas.getContext('2d', { willReadFrequently: true });
     
     // Add preview canvas to canvas wrapper
     const canvasWrapper = document.getElementById('canvasWrapper');
     canvasWrapper.style.position = 'relative';
-    canvasWrapper.appendChild(state.previewCanvas);
+    
+    // Remove old preview canvas if exists
+    const oldPreview = canvasWrapper.querySelector('canvas:not(#mainCanvas)');
+    if (oldPreview) {
+        oldPreview.remove();
+    }
+    canvasWrapper.appendChild(workspaceState.previewCanvas);
     
     // Create initial background layer
-    createLayer('Background', true);
-    fillLayer(0, '#FFFFFF');
+    workspaceState.layers.push(createLayerObject(workspaceState, 'Background', true));
+    workspaceState.activeLayerIndex = 0;
+    fillLayerInWorkspace(workspaceState, 0, bgColor);
     
-    setupEventListeners();
-    restoreUIState();
-    updateUI();
+    // Store workspace
+    globalState.workspaces.set(workspaceId, workspaceState);
+    
+    // Switch to new workspace
+    switchWorkspace(workspaceId);
+    
+    // Update UI
+    updateLayersPanel();
+    composeLayers();
     saveState();
+    updateUI();
+    
+    // Add tab
+    addTab(workspaceId, name);
+    
+    // Hide start screen
+    hideStartScreen();
+    
+    return workspaceId;
 }
+
+function switchWorkspace(workspaceId) {
+    if (!globalState.workspaces.has(workspaceId)) {
+        console.error('Workspace not found:', workspaceId);
+        return;
+    }
+    
+    // Save current state reference
+    const oldState = state;
+    
+    // Switch active workspace
+    globalState.activeWorkspaceId = workspaceId;
+    state = globalState.workspaces.get(workspaceId);
+    
+    if (workspaceId === 'start') {
+        showStartScreen();
+    } else {
+        hideStartScreen();
+        
+        // Restore canvas size
+        const canvas = document.getElementById('mainCanvas');
+        canvas.width = state.canvas.width;
+        canvas.height = state.canvas.height;
+        
+        // Update preview canvas
+        const canvasWrapper = document.getElementById('canvasWrapper');
+        const oldPreview = canvasWrapper.querySelector('canvas:not(#mainCanvas)');
+        if (oldPreview) {
+            oldPreview.remove();
+        }
+        if (state.previewCanvas) {
+            canvasWrapper.appendChild(state.previewCanvas);
+        }
+        
+        // Restore layers and UI
+        updateLayersPanel();
+        composeLayers();
+        updateUI();
+    }
+    
+    updateTabBar();
+}
+
+function closeWorkspace(workspaceId) {
+    if (workspaceId === 'start') {
+        return; // Can't close start workspace
+    }
+    
+    if (!globalState.workspaces.has(workspaceId)) {
+        return;
+    }
+    
+    // Remove workspace
+    globalState.workspaces.delete(workspaceId);
+    
+    // If closing active workspace, switch to another one
+    if (globalState.activeWorkspaceId === workspaceId) {
+        // Find another workspace to switch to
+        const workspaceIds = Array.from(globalState.workspaces.keys());
+        const nextWorkspaceId = workspaceIds[workspaceIds.length - 1] || 'start';
+        switchWorkspace(nextWorkspaceId);
+    }
+    
+    updateTabBar();
+}
+
+function updateTabBar() {
+    const tabBar = document.getElementById('tabBar');
+    tabBar.innerHTML = '';
+    
+    // Add start tab
+    const startTab = document.createElement('div');
+    startTab.className = 'tab start-tab' + (globalState.activeWorkspaceId === 'start' ? ' active' : '');
+    startTab.dataset.tabId = 'start';
+    
+    const startName = document.createElement('span');
+    startName.className = 'tab-name';
+    startName.textContent = 'Start';
+    
+    startTab.appendChild(startName);
+    startTab.addEventListener('click', () => switchWorkspace('start'));
+    tabBar.appendChild(startTab);
+    
+    // Add workspace tabs
+    for (const [workspaceId, workspace] of globalState.workspaces.entries()) {
+        if (workspaceId === 'start') continue;
+        
+        const tab = document.createElement('div');
+        tab.className = 'tab' + (globalState.activeWorkspaceId === workspaceId ? ' active' : '');
+        tab.dataset.tabId = workspaceId;
+        
+        const tabName = document.createElement('span');
+        tabName.className = 'tab-name';
+        tabName.textContent = workspace.metadata.title || `Workspace ${workspaceId.replace('workspace-', '')}`;
+        
+        const closeBtn = document.createElement('button');
+        closeBtn.className = 'tab-close';
+        closeBtn.textContent = '×';
+        closeBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (confirm('Close this workspace? Any unsaved changes will be lost.')) {
+                closeWorkspace(workspaceId);
+            }
+        });
+        
+        tab.appendChild(tabName);
+        tab.appendChild(closeBtn);
+        tab.addEventListener('click', () => switchWorkspace(workspaceId));
+        
+        tabBar.appendChild(tab);
+    }
+}
+
+function addTab(workspaceId, name) {
+    // Tab will be created by updateTabBar
+    updateTabBar();
+}
+
+function createLayerObject(workspaceState, name, isBackground = false) {
+    const canvas = document.createElement('canvas');
+    canvas.width = workspaceState.canvas.width;
+    canvas.height = workspaceState.canvas.height;
+    
+    return {
+        id: workspaceState.layers.length,
+        name: name || `Layer ${workspaceState.layers.length + 1}`,
+        canvas: canvas,
+        ctx: canvas.getContext('2d', { willReadFrequently: true }),
+        visible: true,
+        opacity: 1.0,
+        isBackground: isBackground,
+        duration: 100
+    };
+}
+
+function fillLayerInWorkspace(workspaceState, layerIndex, color) {
+    const layer = workspaceState.layers[layerIndex];
+    layer.ctx.fillStyle = color;
+    layer.ctx.fillRect(0, 0, layer.canvas.width, layer.canvas.height);
+}
+
 
 // Layer Management
 function createLayer(name = 'Layer', isBackground = false) {
@@ -408,8 +620,9 @@ async function handleFileUpload(e) {
         // Check if image has multiple frames
         const isMultiFrame = image.frames && image.frames.length > 1;
         
+        let width, height;
+        
         if (isMultiFrame) {
-            // Load each frame as a separate layer
             // Find largest frame dimensions
             let maxWidth = 0;
             let maxHeight = 0;
@@ -417,15 +630,24 @@ async function handleFileUpload(e) {
                 if (frame.width > maxWidth) maxWidth = frame.width;
                 if (frame.height > maxHeight) maxHeight = frame.height;
             }
-            
-            state.canvas.width = maxWidth;
-            state.canvas.height = maxHeight;
-            
-            // Clear existing layers
-            state.layers = [];
-            
+            width = maxWidth;
+            height = maxHeight;
+        } else {
+            width = image.width;
+            height = image.height;
+        }
+        
+        // Create new workspace
+        const workspaceId = createWorkspace(file.name, width, height, 'transparent');
+        const workspaceState = globalState.workspaces.get(workspaceId);
+        
+        // Clear the default background layer
+        workspaceState.layers = [];
+        
+        if (isMultiFrame) {
+            // Load each frame as a separate layer
             for (const [i, frame] of image.frames.entries()) {
-                const layer = createLayer(`${file.name} - Frame ${i + 1}`);
+                const layer = createLayerObject(workspaceState, `${file.name} - Frame ${i + 1}`);
                 
                 // Set duration if available
                 if (frame.duration !== undefined) {
@@ -439,28 +661,13 @@ async function handleFileUpload(e) {
                     frame.height
                 );
                 layer.ctx.putImageData(imageData, 0, 0);
-            }
-        } else {
-            // Single frame image
-            // Resize canvas to fit image
-            state.canvas.width = image.width;
-            state.canvas.height = image.height;
-            
-            // Resize all existing layers
-            state.layers.forEach(layer => {
-                const tempCanvas = document.createElement('canvas');
-                tempCanvas.width = image.width;
-                tempCanvas.height = image.height;
-                const tempCtx = tempCanvas.getContext('2d');
-                tempCtx.drawImage(layer.canvas, 0, 0);
                 
-                layer.canvas.width = image.width;
-                layer.canvas.height = image.height;
-                layer.ctx.drawImage(tempCanvas, 0, 0);
-            });
-            
-            // Create new layer with the loaded image
-            const newLayer = createLayer(file.name);
+                workspaceState.layers.push(layer);
+            }
+            workspaceState.activeLayerIndex = 0;
+        } else {
+            // Single frame image - create layer with the loaded image
+            const newLayer = createLayerObject(workspaceState, file.name);
             
             // Convert image data to ImageData and draw
             const imageData = new ImageData(
@@ -469,14 +676,114 @@ async function handleFileUpload(e) {
                 image.height
             );
             newLayer.ctx.putImageData(imageData, 0, 0);
+            
+            workspaceState.layers.push(newLayer);
+            workspaceState.activeLayerIndex = 0;
         }
         
+        // Re-index layers
+        workspaceState.layers.forEach((layer, index) => {
+            layer.id = index;
+        });
+        
+        updateLayersPanel();
         composeLayers();
         saveState();
     } catch (error) {
         console.error('Error loading image:', error);
         alert('Error loading image. Please try a different file.');
     }
+}
+
+async function importAsLayer() {
+    // Check if we're in a workspace
+    if (globalState.activeWorkspaceId === 'start') {
+        alert('Please create or open an image first before importing layers.');
+        return;
+    }
+    
+    const input = document.getElementById('importLayerInput');
+    input.click();
+}
+
+async function handleImportLayer(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    // Check if we're in a workspace
+    if (globalState.activeWorkspaceId === 'start') {
+        alert('Please create or open an image first before importing layers.');
+        return;
+    }
+    
+    const arrayBuffer = await file.arrayBuffer();
+    const uint8Array = new Uint8Array(arrayBuffer);
+    
+    try {
+        const image = await Image.read(uint8Array);
+        
+        // Check if image has multiple frames
+        const isMultiFrame = image.frames && image.frames.length > 1;
+        
+        if (isMultiFrame) {
+            // Import each frame as a separate layer
+            for (const [i, frame] of image.frames.entries()) {
+                const layer = createLayer(`${file.name} - Frame ${i + 1}`);
+                
+                // Set duration if available
+                if (frame.duration !== undefined) {
+                    layer.duration = frame.duration;
+                }
+                
+                // Convert frame data to ImageData and draw
+                // Note: We don't change canvas dimensions, just draw the image
+                const imageData = new ImageData(
+                    new Uint8ClampedArray(frame.data),
+                    frame.width,
+                    frame.height
+                );
+                
+                // Create temporary canvas to hold the image
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = frame.width;
+                tempCanvas.height = frame.height;
+                const tempCtx = tempCanvas.getContext('2d');
+                tempCtx.putImageData(imageData, 0, 0);
+                
+                // Draw onto layer canvas (may be clipped if image is larger)
+                layer.ctx.drawImage(tempCanvas, 0, 0);
+            }
+        } else {
+            // Single frame image - create layer with the loaded image
+            const newLayer = createLayer(file.name);
+            
+            // Convert image data to ImageData
+            const imageData = new ImageData(
+                new Uint8ClampedArray(image.data),
+                image.width,
+                image.height
+            );
+            
+            // Create temporary canvas to hold the image
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = image.width;
+            tempCanvas.height = image.height;
+            const tempCtx = tempCanvas.getContext('2d');
+            tempCtx.putImageData(imageData, 0, 0);
+            
+            // Draw onto layer canvas (may be clipped if image is larger)
+            newLayer.ctx.drawImage(tempCanvas, 0, 0);
+        }
+        
+        composeLayers();
+        saveState();
+    } catch (error) {
+        console.error('Error importing layer:', error);
+        alert('Error importing layer. Please try a different file.');
+    }
+    
+    // Clear the input so the same file can be imported again
+    e.target.value = '';
 }
 
 async function saveImage() {
@@ -643,18 +950,8 @@ function applyNewImage() {
     const bgColor = document.getElementById('newBgColor').value;
     
     if (width > 0 && height > 0) {
-        state.canvas.width = width;
-        state.canvas.height = height;
-        
-        // Clear layers
-        state.layers = [];
-        
-        // Create new background layer
-        createLayer('Background', true);
-        fillLayer(0, bgColor);
-        
-        composeLayers();
-        saveState();
+        // Create new workspace
+        createWorkspace('New Image', width, height, bgColor);
     }
     
     closeModal('newImageModal');
@@ -1145,17 +1442,24 @@ function closeModal(modalId) {
 
 // Event Listeners
 function setupEventListeners() {
-    // Canvas events
-    state.canvas.addEventListener('mousedown', startDrawing);
-    state.canvas.addEventListener('mousemove', draw);
-    state.canvas.addEventListener('mouseup', stopDrawing);
-    state.canvas.addEventListener('mouseleave', stopDrawing);
+    // Canvas events - will be bound to the current state
+    const canvas = document.getElementById('mainCanvas');
+    canvas.addEventListener('mousedown', startDrawing);
+    canvas.addEventListener('mousemove', draw);
+    canvas.addEventListener('mouseup', stopDrawing);
+    canvas.addEventListener('mouseleave', stopDrawing);
+    
+    // Start screen buttons
+    document.getElementById('startNewBtn').addEventListener('click', createNewImage);
+    document.getElementById('startOpenBtn').addEventListener('click', openImage);
     
     // File operations
     document.getElementById('newBtn').addEventListener('click', createNewImage);
     document.getElementById('openBtn').addEventListener('click', openImage);
+    document.getElementById('importLayerBtn').addEventListener('click', importAsLayer);
     document.getElementById('saveBtn').addEventListener('click', saveImage);
     document.getElementById('fileInput').addEventListener('change', handleFileUpload);
+    document.getElementById('importLayerInput').addEventListener('change', handleImportLayer);
     
     // Undo/Redo
     document.getElementById('undoBtn').addEventListener('click', undo);
