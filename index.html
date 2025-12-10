@@ -23,6 +23,9 @@
                 <button class="tool-btn" id="metadataBtn" title="Edit Metadata">
                     <span>📋</span> Metadata
                 </button>
+                <button class="tool-btn" id="imageDimensionsBtn" title="Image Dimensions">
+                    <span>📐</span> Dimensions
+                </button>
             </div>
             <div class="toolbar-section">
                 <button class="tool-btn" id="undoBtn" title="Undo">
@@ -42,6 +45,9 @@
                 <div class="tool-group">
                     <button class="tool-btn active" data-tool="select" title="Select/Move">
                         <span>🔲</span> Select
+                    </button>
+                    <button class="tool-btn" data-tool="move" title="Move Layer">
+                        <span>✋</span> Move
                     </button>
                     <button class="tool-btn" data-tool="brush" title="Brush">
                         <span>🖌️</span> Brush
@@ -232,6 +238,35 @@
             <div class="modal-buttons">
                 <button id="applyLayerDurationBtn">Apply</button>
                 <button id="cancelLayerDurationBtn">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="layerOpacityModal" class="modal">
+        <div class="modal-content">
+            <h2>Set Layer Opacity</h2>
+            <label>Opacity: <span id="layerOpacityValue">100</span>%
+                <input type="range" id="layerOpacityInput" min="0" max="100" value="100" step="1">
+            </label>
+            <div class="modal-buttons">
+                <button id="applyLayerOpacityBtn">Apply</button>
+                <button id="cancelLayerOpacityBtn">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="imageDimensionsModal" class="modal">
+        <div class="modal-content">
+            <h2>Image Dimensions</h2>
+            <label>Width: <input type="number" id="imageDimWidth" min="1"></label>
+            <label>Height: <input type="number" id="imageDimHeight" min="1"></label>
+            <label>
+                <input type="checkbox" id="scaleAllLayers">
+                Scale all layers when changing dimensions
+            </label>
+            <div class="modal-buttons">
+                <button id="applyImageDimensionsBtn">Apply</button>
+                <button id="cancelImageDimensionsBtn">Cancel</button>
             </div>
         </div>
     </div>

@@ -266,10 +266,26 @@ input[type="color"] {
     font-size: 13px;
 }
 
+.layer-opacity {
+    font-size: 11px;
+    color: #888;
+    margin-left: 5px;
+    cursor: pointer;
+}
+
+.layer-opacity:hover {
+    color: #aaa;
+}
+
 .layer-duration {
     font-size: 11px;
     color: #888;
     margin-left: 5px;
+    cursor: pointer;
+}
+
+.layer-duration:hover {
+    color: #aaa;
 }
 
 .layer-duration-input {

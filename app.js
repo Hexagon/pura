@@ -27,7 +27,12 @@ const state = {
         author: '',
         description: '',
         copyright: ''
-    }
+    },
+    // Preview and move tool state
+    previewCanvas: null,
+    previewCtx: null,
+    moveOffsetX: 0,
+    moveOffsetY: 0
 };
 
 // Initialize the application
@@ -38,6 +43,21 @@ function init() {
     // Set default canvas size
     state.canvas.width = 800;
     state.canvas.height = 600;
+    
+    // Create preview canvas overlay
+    state.previewCanvas = document.createElement('canvas');
+    state.previewCanvas.width = state.canvas.width;
+    state.previewCanvas.height = state.canvas.height;
+    state.previewCanvas.style.position = 'absolute';
+    state.previewCanvas.style.pointerEvents = 'none';
+    state.previewCanvas.style.top = '0';
+    state.previewCanvas.style.left = '0';
+    state.previewCtx = state.previewCanvas.getContext('2d', { willReadFrequently: true });
+    
+    // Add preview canvas to canvas wrapper
+    const canvasWrapper = document.getElementById('canvasWrapper');
+    canvasWrapper.style.position = 'relative';
+    canvasWrapper.appendChild(state.previewCanvas);
     
     // Create initial background layer
     createLayer('Background', true);
@@ -150,6 +170,15 @@ function updateLayersPanel() {
         nameSpan.className = 'layer-name';
         nameSpan.textContent = layer.name;
         
+        const opacitySpan = document.createElement('span');
+        opacitySpan.className = 'layer-opacity';
+        opacitySpan.textContent = `${Math.round(layer.opacity * 100)}%`;
+        opacitySpan.title = 'Click to edit opacity';
+        opacitySpan.addEventListener('click', (e) => {
+            e.stopPropagation();
+            showLayerOpacityModal(index);
+        });
+        
         const durationSpan = document.createElement('span');
         durationSpan.className = 'layer-duration';
         durationSpan.textContent = `${layer.duration}ms`;
@@ -169,6 +198,7 @@ function updateLayersPanel() {
         
         layerItem.appendChild(checkbox);
         layerItem.appendChild(nameSpan);
+        layerItem.appendChild(opacitySpan);
         layerItem.appendChild(durationSpan);
         if (!layer.isBackground || state.layers.length > 1) {
             layerItem.appendChild(deleteBtn);
@@ -196,6 +226,14 @@ function startDrawing(e) {
     state.isDrawing = true;
     
     const layer = state.layers[state.activeLayerIndex];
+    
+    if (state.tool === 'move') {
+        // Store the offset for moving the layer
+        state.moveOffsetX = 0;
+        state.moveOffsetY = 0;
+        return;
+    }
+    
     layer.ctx.strokeStyle = state.foregroundColor;
     layer.ctx.fillStyle = state.foregroundColor;
     layer.ctx.lineWidth = state.brushSize;
@@ -214,9 +252,14 @@ function startDrawing(e) {
 }
 
 function draw(e) {
-    if (!state.isDrawing) return;
-    
     const pos = getMousePos(e);
+    
+    if (!state.isDrawing) {
+        // Clear preview for non-drawing state
+        state.previewCtx.clearRect(0, 0, state.previewCanvas.width, state.previewCanvas.height);
+        return;
+    }
+    
     const layer = state.layers[state.activeLayerIndex];
     
     switch (state.tool) {
@@ -231,6 +274,52 @@ function draw(e) {
             layer.ctx.stroke();
             composeLayers();
             break;
+            
+        case 'rect':
+        case 'circle':
+        case 'line':
+        case 'select':
+            // Draw preview
+            state.previewCtx.clearRect(0, 0, state.previewCanvas.width, state.previewCanvas.height);
+            state.previewCtx.strokeStyle = state.foregroundColor;
+            state.previewCtx.lineWidth = state.brushSize;
+            state.previewCtx.globalAlpha = 0.7;
+            state.previewCtx.setLineDash([5, 5]);
+            
+            if (state.tool === 'rect' || state.tool === 'select') {
+                const width = pos.x - state.startX;
+                const height = pos.y - state.startY;
+                state.previewCtx.strokeRect(state.startX, state.startY, width, height);
+            } else if (state.tool === 'circle') {
+                const radius = Math.sqrt(
+                    Math.pow(pos.x - state.startX, 2) + 
+                    Math.pow(pos.y - state.startY, 2)
+                );
+                state.previewCtx.beginPath();
+                state.previewCtx.arc(state.startX, state.startY, radius, 0, 2 * Math.PI);
+                state.previewCtx.stroke();
+            } else if (state.tool === 'line') {
+                state.previewCtx.beginPath();
+                state.previewCtx.moveTo(state.startX, state.startY);
+                state.previewCtx.lineTo(pos.x, pos.y);
+                state.previewCtx.stroke();
+            }
+            
+            state.previewCtx.setLineDash([]);
+            state.previewCtx.globalAlpha = 1.0;
+            break;
+            
+        case 'move':
+            // Move the layer
+            state.moveOffsetX = pos.x - state.startX;
+            state.moveOffsetY = pos.y - state.startY;
+            
+            // Clear preview and show moved layer
+            state.previewCtx.clearRect(0, 0, state.previewCanvas.width, state.previewCanvas.height);
+            state.previewCtx.globalAlpha = 0.7;
+            state.previewCtx.drawImage(layer.canvas, state.moveOffsetX, state.moveOffsetY);
+            state.previewCtx.globalAlpha = 1.0;
+            break;
     }
 }
 
@@ -239,6 +328,9 @@ function stopDrawing(e) {
     
     const pos = getMousePos(e);
     const layer = state.layers[state.activeLayerIndex];
+    
+    // Clear preview
+    state.previewCtx.clearRect(0, 0, state.previewCanvas.width, state.previewCanvas.height);
     
     switch (state.tool) {
         case 'brush':
@@ -267,6 +359,24 @@ function stopDrawing(e) {
             layer.ctx.moveTo(state.startX, state.startY);
             layer.ctx.lineTo(pos.x, pos.y);
             layer.ctx.stroke();
+            break;
+            
+        case 'move':
+            // Apply the move to the layer
+            if (state.moveOffsetX !== 0 || state.moveOffsetY !== 0) {
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = layer.canvas.width;
+                tempCanvas.height = layer.canvas.height;
+                const tempCtx = tempCanvas.getContext('2d');
+                tempCtx.drawImage(layer.canvas, 0, 0);
+                
+                layer.ctx.clearRect(0, 0, layer.canvas.width, layer.canvas.height);
+                layer.ctx.drawImage(tempCanvas, state.moveOffsetX, state.moveOffsetY);
+            }
+            break;
+            
+        case 'select':
+            // Select tool doesn't draw, just shows selection
             break;
     }
     
@@ -300,8 +410,16 @@ async function handleFileUpload(e) {
         
         if (isMultiFrame) {
             // Load each frame as a separate layer
-            state.canvas.width = image.width;
-            state.canvas.height = image.height;
+            // Find largest frame dimensions
+            let maxWidth = 0;
+            let maxHeight = 0;
+            for (const frame of image.frames) {
+                if (frame.width > maxWidth) maxWidth = frame.width;
+                if (frame.height > maxHeight) maxHeight = frame.height;
+            }
+            
+            state.canvas.width = maxWidth;
+            state.canvas.height = maxHeight;
             
             // Clear existing layers
             state.layers = [];
@@ -414,13 +532,14 @@ async function applySaveImage() {
             );
             
             // Add additional frames
+            let frameIndex = 1;
             try {
-                for (let i = 1; i < frames.length; i++) {
-                    image.addFrame(frames[i].data, frames[i].duration);
+                for (frameIndex = 1; frameIndex < frames.length; frameIndex++) {
+                    image.addFrame(frames[frameIndex].data, frames[frameIndex].duration);
                 }
             } catch (frameError) {
                 console.error('Error adding frame:', frameError);
-                throw new Error(`Failed to add frame ${i}: ${frameError.message}`);
+                throw new Error(`Failed to add frame ${frameIndex}: ${frameError.message}`);
             }
             
             // Encode based on format
@@ -872,6 +991,13 @@ function updateUI() {
     document.getElementById('redoBtn').disabled = state.historyIndex >= state.history.length - 1;
 }
 
+function updatePreviewCanvasSize() {
+    if (state.previewCanvas) {
+        state.previewCanvas.width = state.canvas.width;
+        state.previewCanvas.height = state.canvas.height;
+    }
+}
+
 // Metadata Editor
 function showMetadataEditor() {
     document.getElementById('metaTitle').value = state.metadata.title || '';
@@ -910,6 +1036,87 @@ function applyLayerDuration() {
         saveState();
     }
     closeModal('layerDurationModal');
+}
+
+// Layer Opacity Editor
+function showLayerOpacityModal(layerIndex) {
+    state.tempLayerIndex = layerIndex;
+    const layer = state.layers[layerIndex];
+    const opacityPercent = Math.round(layer.opacity * 100);
+    document.getElementById('layerOpacityInput').value = opacityPercent;
+    document.getElementById('layerOpacityValue').textContent = opacityPercent;
+    
+    const modal = document.getElementById('layerOpacityModal');
+    modal.classList.add('active');
+}
+
+function applyLayerOpacity() {
+    const opacityPercent = parseInt(document.getElementById('layerOpacityInput').value);
+    state.layers[state.tempLayerIndex].opacity = opacityPercent / 100;
+    updateLayersPanel();
+    composeLayers();
+    saveState();
+    closeModal('layerOpacityModal');
+}
+
+// Image Dimensions Editor
+function showImageDimensionsModal() {
+    document.getElementById('imageDimWidth').value = state.canvas.width;
+    document.getElementById('imageDimHeight').value = state.canvas.height;
+    document.getElementById('scaleAllLayers').checked = false;
+    
+    const modal = document.getElementById('imageDimensionsModal');
+    modal.classList.add('active');
+}
+
+function applyImageDimensions() {
+    const newWidth = parseInt(document.getElementById('imageDimWidth').value);
+    const newHeight = parseInt(document.getElementById('imageDimHeight').value);
+    const scaleAllLayers = document.getElementById('scaleAllLayers').checked;
+    
+    if (newWidth > 0 && newHeight > 0) {
+        const oldWidth = state.canvas.width;
+        const oldHeight = state.canvas.height;
+        
+        state.canvas.width = newWidth;
+        state.canvas.height = newHeight;
+        
+        if (scaleAllLayers) {
+            // Scale all layers proportionally
+            state.layers.forEach(layer => {
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = oldWidth;
+                tempCanvas.height = oldHeight;
+                const tempCtx = tempCanvas.getContext('2d');
+                tempCtx.drawImage(layer.canvas, 0, 0);
+                
+                layer.canvas.width = newWidth;
+                layer.canvas.height = newHeight;
+                layer.ctx.clearRect(0, 0, newWidth, newHeight);
+                layer.ctx.drawImage(tempCanvas, 0, 0, oldWidth, oldHeight, 0, 0, newWidth, newHeight);
+            });
+        } else {
+            // Just resize canvases without scaling content
+            state.layers.forEach(layer => {
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = oldWidth;
+                tempCanvas.height = oldHeight;
+                const tempCtx = tempCanvas.getContext('2d');
+                tempCtx.drawImage(layer.canvas, 0, 0);
+                
+                layer.canvas.width = newWidth;
+                layer.canvas.height = newHeight;
+                layer.ctx.clearRect(0, 0, newWidth, newHeight);
+                layer.ctx.drawImage(tempCanvas, 0, 0);
+            });
+        }
+        
+        updatePreviewCanvasSize();
+        composeLayers();
+        saveState();
+    }
+    
+    closeModal('imageDimensionsModal');
 }
 
 // Collapsible Sidebar Functions
@@ -1066,6 +1273,18 @@ function setupEventListeners() {
     // Layer duration modal controls
     document.getElementById('applyLayerDurationBtn').addEventListener('click', applyLayerDuration);
     document.getElementById('cancelLayerDurationBtn').addEventListener('click', () => closeModal('layerDurationModal'));
+    
+    // Layer opacity modal controls
+    document.getElementById('layerOpacityInput').addEventListener('input', (e) => {
+        document.getElementById('layerOpacityValue').textContent = e.target.value;
+    });
+    document.getElementById('applyLayerOpacityBtn').addEventListener('click', applyLayerOpacity);
+    document.getElementById('cancelLayerOpacityBtn').addEventListener('click', () => closeModal('layerOpacityModal'));
+    
+    // Image dimensions modal controls
+    document.getElementById('imageDimensionsBtn').addEventListener('click', showImageDimensionsModal);
+    document.getElementById('applyImageDimensionsBtn').addEventListener('click', applyImageDimensions);
+    document.getElementById('cancelImageDimensionsBtn').addEventListener('click', () => closeModal('imageDimensionsModal'));
     
     // Collapsible sidebar controls
     document.getElementById('leftCollapseToggle').addEventListener('click', () => {
