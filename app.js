@@ -1355,7 +1355,10 @@ function addMetadataRow(tbody, key, label, type, isCustom) {
     const tdLabel = document.createElement('td');
     const labelDiv = document.createElement('div');
     labelDiv.className = 'metadata-field-name';
-    labelDiv.textContent = label + ':';
+    
+    const labelText = document.createElement('span');
+    labelText.textContent = label;
+    labelDiv.appendChild(labelText);
     
     if (isCustom) {
         const deleteBtn = document.createElement('button');
@@ -1383,7 +1386,7 @@ function addMetadataRow(tbody, key, label, type, isCustom) {
     
     input.className = 'metadata-input';
     input.value = state.metadata[key] || '';
-    input.placeholder = label;
+    input.placeholder = '';
     
     input.addEventListener('input', (e) => {
         state.metadata[key] = e.target.value;

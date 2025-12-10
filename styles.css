@@ -650,34 +650,54 @@ input[type="color"] {
     background: #5d5d5d;
 }
 
-/* Metadata Table */
+/* Metadata Table - Property Grid Style */
 .metadata-table {
     width: 100%;
+    font-size: 12px;
 }
 
 #metadataTable {
     width: 100%;
     border-collapse: collapse;
+    border: 1px solid #3d3d3d;
+}
+
+#metadataTable tr {
+    border-bottom: 1px solid #3d3d3d;
+}
+
+#metadataTable tr:nth-child(even) {
+    background: rgba(255, 255, 255, 0.02);
+}
+
+#metadataTable tr:hover {
+    background: rgba(255, 255, 255, 0.04);
 }
 
 #metadataTable td {
-    padding: 4px 2px;
-    vertical-align: top;
+    padding: 3px 6px;
+    vertical-align: middle;
+    line-height: 1.4;
 }
 
 #metadataTable td:first-child {
-    width: 35%;
+    width: 40%;
     font-size: 11px;
-    color: #888;
-    padding-right: 5px;
+    color: #a0a0a0;
+    font-weight: 500;
+    padding-right: 8px;
+    border-right: 1px solid #3d3d3d;
+    background: rgba(0, 0, 0, 0.1);
 }
 
 .metadata-field-name {
     font-size: 11px;
-    color: #888;
+    color: #a0a0a0;
     display: flex;
     align-items: center;
-    gap: 5px;
+    justify-content: space-between;
+    gap: 4px;
+    padding: 2px 0;
 }
 
 .metadata-delete-btn {
@@ -687,14 +707,15 @@ input[type="color"] {
     cursor: pointer;
     font-size: 12px;
     padding: 0;
-    width: 14px;
-    height: 14px;
+    width: 16px;
+    height: 16px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     border-radius: 2px;
     opacity: 0;
-    transition: opacity 0.2s;
+    transition: all 0.2s;
+    flex-shrink: 0;
 }
 
 #metadataTable tr:hover .metadata-delete-btn {
@@ -708,21 +729,29 @@ input[type="color"] {
 
 .metadata-input {
     width: 100%;
-    padding: 4px 6px;
-    background: #3d3d3d;
-    border: 1px solid #4d4d4d;
+    padding: 3px 5px;
+    background: transparent;
+    border: 1px solid transparent;
     color: #e0e0e0;
-    border-radius: 3px;
-    font-size: 12px;
+    border-radius: 2px;
+    font-size: 11px;
     font-family: inherit;
+    transition: all 0.2s;
+}
+
+.metadata-input:hover {
+    background: #3d3d3d;
+    border-color: #4d4d4d;
 }
 
 .metadata-input:focus {
     outline: none;
+    background: #3d3d3d;
     border-color: #0066cc;
 }
 
 textarea.metadata-input {
     resize: vertical;
-    min-height: 50px;
+    min-height: 40px;
+    max-height: 120px;
 }
