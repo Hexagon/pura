@@ -22,11 +22,13 @@ Single global `state` object in `app.js` containing:
 - Layer array with off-screen canvases
 - Active tool and drawing parameters
 - History stack for undo/redo
+- Metadata object (title, author, description, copyright)
 
 ### Layer Architecture
 - Each layer is an off-screen `<canvas>` element
 - Layers compose onto main canvas on-demand
 - Bottom-to-top rendering order
+- Each layer has a duration property (milliseconds) for animation export
 
 ## Code Style
 
@@ -52,7 +54,8 @@ Single global `state` object in `app.js` containing:
 - **cross-image@0.2.2**: Image processing (resize, format conversion)
   - Load from: `https://cdn.jsdelivr.net/npm/cross-image@0.2.2/esm/mod.js`
   - Trust CDN availability - no vendor fallbacks
-  - Use for: resize operations, image I/O (PNG/JPEG/WebP)
+  - Use for: resize operations, image I/O (PNG/JPEG/WebP/GIF/APNG/TIFF/BMP)
+  - Supports multi-frame images (animated GIF, APNG, multi-page TIFF)
 
 ### No Additional Dependencies
 Do not add:
@@ -99,7 +102,8 @@ Do not add:
 ### Layout
 - Three-column: tools (left), canvas (center), layers/effects (right)
 - Top toolbar for file operations and undo/redo
-- Modals for dialogs (new image, resize, effects with sliders)
+- Modals for dialogs (new image, resize, effects with sliders, save options, metadata)
+- Collapsible sidebars with toggle buttons (state persisted in localStorage)
 
 ## Testing
 
@@ -134,14 +138,27 @@ python3 -m http.server 8000
 1. User selects file via `<input type="file">`
 2. Read as `ArrayBuffer`, convert to `Uint8Array`
 3. Use `cross-image` to parse format
-4. Create new layer with image data
-5. Adjust canvas size if needed
+4. For multi-frame images (GIF, APNG, TIFF), load each frame as a separate layer
+5. For single-frame images, create new layer with image data
+6. Adjust canvas size if needed
 
 ### Saving Images
-1. Get `ImageData` from composed main canvas
-2. Create `cross-image` instance with `Image.fromRGBA()`
-3. Save as PNG with `image.save('png')`
-4. Create blob and trigger download
+1. User opens save dialog with format selection
+2. Formats supported: PNG, JPEG, WebP, GIF, APNG, TIFF, BMP
+3. Quality slider available for JPEG and WebP (0-100)
+4. Multi-frame export option for GIF, APNG, and TIFF
+5. Get `ImageData` from composed main canvas or individual layers
+6. Create `cross-image` instance with `Image.fromRGBA()`
+7. For animations, use layer durations (default: 100ms)
+8. Save with selected format using `image.save(format, options)`
+9. Create blob and trigger download
+
+### Multi-Frame Support
+- **Opening**: Multi-frame TIFF, GIF, and APNG files are automatically detected and loaded as separate layers
+- **Saving**: Enable "Export as animation/multi-page" checkbox in save dialog
+  - GIF/APNG: Uses layer durations for frame timing
+  - TIFF: Saves layers as multi-page document
+  - Only visible layers are included in export
 
 ## Common Patterns
 
@@ -161,6 +178,55 @@ const imageData = layer.ctx.getImageData(0, 0, layer.canvas.width, layer.canvas.
 layer.ctx.putImageData(imageData, 0, 0);
 composeLayers();
 saveState();
+```
+
+### Save Dialog Pattern
+```javascript
+// Show save dialog
+function saveImage() {
+    document.getElementById('saveModal').classList.add('active');
+}
+
+// Apply save with user's selections
+async function applySaveImage() {
+    const format = document.getElementById('saveFormat').value;
+    const quality = parseInt(document.getElementById('saveQuality').value);
+    const multiFrame = document.getElementById('saveMultiFrame').checked;
+    // ... encode and download
+}
+```
+
+### Metadata Management
+```javascript
+// Metadata stored in state.metadata object
+state.metadata = {
+    title: '',
+    author: '',
+    description: '',
+    copyright: ''
+};
+
+// Applied to images during save
+if (state.metadata.title) {
+    image.metadata = { ...state.metadata };
+}
+```
+
+### Collapsible Sidebars
+```javascript
+function toggleSidebar(sidebarId) {
+    const sidebar = document.getElementById(sidebarId);
+    sidebar.classList.toggle('collapsed');
+    localStorage.setItem(`${sidebarId}-collapsed`, sidebar.classList.contains('collapsed'));
+}
+
+// Restore on init
+function restoreUIState() {
+    const isCollapsed = localStorage.getItem('leftSidebar-collapsed') === 'true';
+    if (isCollapsed) {
+        document.getElementById('leftSidebar').classList.add('collapsed');
+    }
+}
 ```
 
 ### Modal Interactions
