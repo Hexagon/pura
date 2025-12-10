@@ -31,11 +31,25 @@ function createWorkspaceState(canvas, ctx) {
         historyIndex: -1,
         maxHistory: 50,
         metadata: {
+            // Basic fields
             title: '',
             author: '',
             description: '',
-            copyright: ''
+            copyright: '',
+            // Standard EXIF fields
+            artist: '',
+            software: 'CrimShop',
+            dateTime: '',
+            make: '',
+            model: '',
+            orientation: '',
+            xResolution: '',
+            yResolution: '',
+            resolutionUnit: '',
+            keywords: '',
+            comment: ''
         },
+        customMetadataFields: [], // Array of custom field names
         previewCanvas: null,
         previewCtx: null,
         moveOffsetX: 0,
@@ -180,6 +194,7 @@ function switchWorkspace(workspaceId) {
         updateLayersPanel();
         composeLayers();
         updateUI();
+        updateMetadataTable();
     }
     
     updateTabBar();
@@ -1294,24 +1309,180 @@ function updatePreviewCanvasSize() {
 }
 
 // Metadata Editor
-function showMetadataEditor() {
-    document.getElementById('metaTitle').value = state.metadata.title || '';
-    document.getElementById('metaAuthor').value = state.metadata.author || '';
-    document.getElementById('metaDescription').value = state.metadata.description || '';
-    document.getElementById('metaCopyright').value = state.metadata.copyright || '';
+function updateMetadataTable() {
+    const tbody = document.getElementById('metadataTableBody');
+    tbody.innerHTML = '';
     
-    const modal = document.getElementById('metadataModal');
+    // Standard fields (always shown)
+    const standardFields = [
+        { key: 'title', label: 'Title', type: 'text' },
+        { key: 'author', label: 'Author', type: 'text' },
+        { key: 'description', label: 'Description', type: 'textarea' },
+        { key: 'copyright', label: 'Copyright', type: 'text' },
+        { key: 'artist', label: 'Artist', type: 'text' },
+        { key: 'software', label: 'Software', type: 'text' },
+        { key: 'dateTime', label: 'Date/Time', type: 'text' },
+        { key: 'make', label: 'Make', type: 'text' },
+        { key: 'model', label: 'Model', type: 'text' },
+        { key: 'orientation', label: 'Orientation', type: 'text' },
+        { key: 'xResolution', label: 'X Resolution', type: 'text' },
+        { key: 'yResolution', label: 'Y Resolution', type: 'text' },
+        { key: 'resolutionUnit', label: 'Resolution Unit', type: 'text' },
+        { key: 'keywords', label: 'Keywords', type: 'text' },
+        { key: 'comment', label: 'Comment', type: 'textarea' }
+    ];
+    
+    // Add standard fields
+    standardFields.forEach(field => {
+        addMetadataRow(tbody, field.key, field.label, field.type, false);
+    });
+    
+    // Add custom fields
+    if (state.customMetadataFields) {
+        state.customMetadataFields.forEach(fieldName => {
+            addMetadataRow(tbody, fieldName, fieldName, 'text', true);
+        });
+    }
+}
+
+function addMetadataRow(tbody, key, label, type, isCustom) {
+    const tr = document.createElement('tr');
+    
+    const tdLabel = document.createElement('td');
+    const labelDiv = document.createElement('div');
+    labelDiv.className = 'metadata-field-name';
+    labelDiv.textContent = label + ':';
+    
+    if (isCustom) {
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'metadata-delete-btn';
+        deleteBtn.textContent = '×';
+        deleteBtn.title = 'Remove field';
+        deleteBtn.addEventListener('click', () => {
+            removeCustomMetadataField(key);
+        });
+        labelDiv.appendChild(deleteBtn);
+    }
+    
+    tdLabel.appendChild(labelDiv);
+    
+    const tdInput = document.createElement('td');
+    let input;
+    
+    if (type === 'textarea') {
+        input = document.createElement('textarea');
+        input.rows = 2;
+    } else {
+        input = document.createElement('input');
+        input.type = 'text';
+    }
+    
+    input.className = 'metadata-input';
+    input.value = state.metadata[key] || '';
+    input.placeholder = label;
+    
+    input.addEventListener('input', (e) => {
+        state.metadata[key] = e.target.value;
+    });
+    
+    tdInput.appendChild(input);
+    
+    tr.appendChild(tdLabel);
+    tr.appendChild(tdInput);
+    tbody.appendChild(tr);
+}
+
+function showAddMetadataFieldModal() {
+    document.getElementById('newMetadataFieldName').value = '';
+    const modal = document.getElementById('addMetadataFieldModal');
     modal.classList.add('active');
 }
 
-function applyMetadata() {
-    state.metadata.title = document.getElementById('metaTitle').value;
-    state.metadata.author = document.getElementById('metaAuthor').value;
-    state.metadata.description = document.getElementById('metaDescription').value;
-    state.metadata.copyright = document.getElementById('metaCopyright').value;
+function applyAddMetadataField() {
+    const fieldName = document.getElementById('newMetadataFieldName').value.trim();
     
-    closeModal('metadataModal');
+    if (!fieldName) {
+        alert('Please enter a field name');
+        return;
+    }
+    
+    // Check if field already exists
+    if (state.metadata.hasOwnProperty(fieldName) || 
+        (state.customMetadataFields && state.customMetadataFields.includes(fieldName))) {
+        alert('A field with this name already exists');
+        return;
+    }
+    
+    // Initialize customMetadataFields if needed
+    if (!state.customMetadataFields) {
+        state.customMetadataFields = [];
+    }
+    
+    // Add to custom fields
+    state.customMetadataFields.push(fieldName);
+    state.metadata[fieldName] = '';
+    
+    updateMetadataTable();
+    closeModal('addMetadataFieldModal');
 }
+
+function removeCustomMetadataField(fieldName) {
+    if (confirm(`Remove field "${fieldName}"?`)) {
+        // Remove from custom fields array
+        const index = state.customMetadataFields.indexOf(fieldName);
+        if (index > -1) {
+            state.customMetadataFields.splice(index, 1);
+        }
+        
+        // Remove from metadata
+        delete state.metadata[fieldName];
+        
+        updateMetadataTable();
+    }
+}
+
+function showMetadataEditor() {
+    // Expand the metadata panel if collapsed
+    const metadataSection = document.querySelector('[data-panel="metadata"]').closest('.panel-section');
+    if (metadataSection.classList.contains('collapsed')) {
+        metadataSection.classList.remove('collapsed');
+    }
+    updateMetadataTable();
+}
+
+function applyMetadata() {
+    // Metadata is saved in real-time via input event listeners
+    // This function is kept for compatibility but does nothing
+}
+
+// Panel Section Toggle
+function togglePanelSection(panelName) {
+    const header = document.querySelector(`[data-panel="${panelName}"]`);
+    if (!header) return;
+    
+    const section = header.closest('.panel-section');
+    section.classList.toggle('collapsed');
+    
+    // Save state to localStorage
+    const isCollapsed = section.classList.contains('collapsed');
+    localStorage.setItem(`panel-${panelName}-collapsed`, isCollapsed);
+}
+
+function restorePanelStates() {
+    // Restore panel collapse states
+    const panels = ['tools', 'color', 'brushSettings', 'layers', 'transforms', 'effects', 'metadata'];
+    panels.forEach(panelName => {
+        const isCollapsed = localStorage.getItem(`panel-${panelName}-collapsed`) === 'true';
+        if (isCollapsed) {
+            const header = document.querySelector(`[data-panel="${panelName}"]`);
+            if (header) {
+                const section = header.closest('.panel-section');
+                section.classList.add('collapsed');
+            }
+        }
+    });
+}
+
 
 // Layer Duration Editor
 function showLayerDurationModal(layerIndex) {
@@ -1432,6 +1603,9 @@ function restoreUIState() {
             document.getElementById(sidebarId).classList.add('collapsed');
         }
     });
+    
+    // Restore panel collapse states
+    restorePanelStates();
 }
 
 function closeModal(modalId) {
@@ -1568,9 +1742,17 @@ function setupEventListeners() {
     document.getElementById('cancelSaveBtn').addEventListener('click', () => closeModal('saveModal'));
     
     // Metadata modal controls
-    document.getElementById('metadataBtn').addEventListener('click', showMetadataEditor);
-    document.getElementById('applyMetadataBtn').addEventListener('click', applyMetadata);
-    document.getElementById('cancelMetadataBtn').addEventListener('click', () => closeModal('metadataModal'));
+    document.getElementById('addMetadataFieldBtn').addEventListener('click', showAddMetadataFieldModal);
+    document.getElementById('applyAddMetadataFieldBtn').addEventListener('click', applyAddMetadataField);
+    document.getElementById('cancelAddMetadataFieldBtn').addEventListener('click', () => closeModal('addMetadataFieldModal'));
+    
+    // Panel section toggles
+    document.querySelectorAll('.panel-header').forEach(header => {
+        header.addEventListener('click', () => {
+            const panelName = header.dataset.panel;
+            togglePanelSection(panelName);
+        });
+    });
     
     // Layer duration modal controls
     document.getElementById('applyLayerDurationBtn').addEventListener('click', applyLayerDuration);

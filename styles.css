@@ -291,6 +291,60 @@ body {
     margin-top: 0;
 }
 
+/* Panel Sections */
+.panel-section {
+    margin-bottom: 5px;
+}
+
+.panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 10px;
+    background: #2d2d2d;
+    border-radius: 4px;
+    cursor: pointer;
+    user-select: none;
+    transition: all 0.2s;
+    margin: 5px 0;
+}
+
+.panel-header:hover {
+    background: #353535;
+}
+
+.panel-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #e0e0e0;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.panel-toggle {
+    font-size: 10px;
+    color: #888;
+    transition: transform 0.2s;
+}
+
+.panel-section.collapsed .panel-toggle {
+    transform: rotate(-90deg);
+}
+
+.panel-content {
+    max-height: 1000px;
+    overflow: hidden;
+    transition: max-height 0.3s ease, opacity 0.3s ease;
+    opacity: 1;
+    padding: 5px 0;
+}
+
+.panel-section.collapsed .panel-content {
+    max-height: 0;
+    opacity: 0;
+    padding: 0;
+}
+
 /* Tool Groups */
 .tool-group {
     display: flex;
@@ -594,4 +648,81 @@ input[type="color"] {
 
 ::-webkit-scrollbar-thumb:hover {
     background: #5d5d5d;
+}
+
+/* Metadata Table */
+.metadata-table {
+    width: 100%;
+}
+
+#metadataTable {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+#metadataTable td {
+    padding: 4px 2px;
+    vertical-align: top;
+}
+
+#metadataTable td:first-child {
+    width: 35%;
+    font-size: 11px;
+    color: #888;
+    padding-right: 5px;
+}
+
+.metadata-field-name {
+    font-size: 11px;
+    color: #888;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.metadata-delete-btn {
+    background: transparent;
+    border: none;
+    color: #d32f2f;
+    cursor: pointer;
+    font-size: 12px;
+    padding: 0;
+    width: 14px;
+    height: 14px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 2px;
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+#metadataTable tr:hover .metadata-delete-btn {
+    opacity: 1;
+}
+
+.metadata-delete-btn:hover {
+    background: #d32f2f;
+    color: white;
+}
+
+.metadata-input {
+    width: 100%;
+    padding: 4px 6px;
+    background: #3d3d3d;
+    border: 1px solid #4d4d4d;
+    color: #e0e0e0;
+    border-radius: 3px;
+    font-size: 12px;
+    font-family: inherit;
+}
+
+.metadata-input:focus {
+    outline: none;
+    border-color: #0066cc;
+}
+
+textarea.metadata-input {
+    resize: vertical;
+    min-height: 50px;
 }

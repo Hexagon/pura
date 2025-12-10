@@ -23,9 +23,6 @@
                 <button class="tool-btn" id="saveBtn" title="Save Image">
                     <span>💾</span> Save
                 </button>
-                <button class="tool-btn" id="metadataBtn" title="Edit Metadata">
-                    <span>📋</span> Metadata
-                </button>
                 <button class="tool-btn" id="imageDimensionsBtn" title="Image Dimensions">
                     <span>📐</span> Dimensions
                 </button>
@@ -51,48 +48,70 @@
             <!-- Left Sidebar - Tools -->
             <div class="sidebar left-sidebar" id="leftSidebar">
                 <button class="collapse-toggle" id="leftCollapseToggle">◀</button>
-                <h3>Tools</h3>
-                <div class="tool-group">
-                    <button class="tool-btn active" data-tool="select" title="Select/Move">
-                        <span>🔲</span> Select
-                    </button>
-                    <button class="tool-btn" data-tool="move" title="Move Layer">
-                        <span>✋</span> Move
-                    </button>
-                    <button class="tool-btn" data-tool="brush" title="Brush">
-                        <span>🖌️</span> Brush
-                    </button>
-                    <button class="tool-btn" data-tool="eraser" title="Eraser">
-                        <span>🧹</span> Eraser
-                    </button>
-                    <button class="tool-btn" data-tool="rect" title="Rectangle">
-                        <span>⬜</span> Rect
-                    </button>
-                    <button class="tool-btn" data-tool="circle" title="Circle">
-                        <span>⭕</span> Circle
-                    </button>
-                    <button class="tool-btn" data-tool="line" title="Line">
-                        <span>📏</span> Line
-                    </button>
-                    <button class="tool-btn" data-tool="text" title="Text">
-                        <span>T</span> Text
-                    </button>
+                
+                <div class="panel-section">
+                    <h3 class="panel-header" data-panel="tools">
+                        <span class="panel-title">Tools</span>
+                        <span class="panel-toggle">▼</span>
+                    </h3>
+                    <div class="panel-content" id="toolsPanel">
+                        <div class="tool-group">
+                            <button class="tool-btn active" data-tool="select" title="Select/Move">
+                                <span>🔲</span> Select
+                            </button>
+                            <button class="tool-btn" data-tool="move" title="Move Layer">
+                                <span>✋</span> Move
+                            </button>
+                            <button class="tool-btn" data-tool="brush" title="Brush">
+                                <span>🖌️</span> Brush
+                            </button>
+                            <button class="tool-btn" data-tool="eraser" title="Eraser">
+                                <span>🧹</span> Eraser
+                            </button>
+                            <button class="tool-btn" data-tool="rect" title="Rectangle">
+                                <span>⬜</span> Rect
+                            </button>
+                            <button class="tool-btn" data-tool="circle" title="Circle">
+                                <span>⭕</span> Circle
+                            </button>
+                            <button class="tool-btn" data-tool="line" title="Line">
+                                <span>📏</span> Line
+                            </button>
+                            <button class="tool-btn" data-tool="text" title="Text">
+                                <span>T</span> Text
+                            </button>
+                        </div>
+                    </div>
                 </div>
                 
-                <h3>Color</h3>
-                <div class="color-picker-group">
-                    <label>Foreground:</label>
-                    <input type="color" id="foregroundColor" value="#000000">
-                    <label>Background:</label>
-                    <input type="color" id="backgroundColor" value="#FFFFFF">
+                <div class="panel-section">
+                    <h3 class="panel-header" data-panel="color">
+                        <span class="panel-title">Color</span>
+                        <span class="panel-toggle">▼</span>
+                    </h3>
+                    <div class="panel-content" id="colorPanel">
+                        <div class="color-picker-group">
+                            <label>Foreground:</label>
+                            <input type="color" id="foregroundColor" value="#000000">
+                            <label>Background:</label>
+                            <input type="color" id="backgroundColor" value="#FFFFFF">
+                        </div>
+                    </div>
                 </div>
                 
-                <h3>Brush Settings</h3>
-                <div class="settings-group">
-                    <label>Size: <span id="brushSizeValue">10</span>px</label>
-                    <input type="range" id="brushSize" min="1" max="100" value="10">
-                    <label>Opacity: <span id="opacityValue">100</span>%</label>
-                    <input type="range" id="opacity" min="0" max="100" value="100">
+                <div class="panel-section">
+                    <h3 class="panel-header" data-panel="brushSettings">
+                        <span class="panel-title">Brush Settings</span>
+                        <span class="panel-toggle">▼</span>
+                    </h3>
+                    <div class="panel-content" id="brushSettingsPanel">
+                        <div class="settings-group">
+                            <label>Size: <span id="brushSizeValue">10</span>px</label>
+                            <input type="range" id="brushSize" min="1" max="100" value="10">
+                            <label>Opacity: <span id="opacityValue">100</span>%</label>
+                            <input type="range" id="opacity" min="0" max="100" value="100">
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -131,35 +150,74 @@
             <!-- Right Sidebar - Layers and Effects -->
             <div class="sidebar right-sidebar" id="rightSidebar">
                 <button class="collapse-toggle" id="rightCollapseToggle">▶</button>
-                <h3>Layers</h3>
-                <div class="layers-panel" id="layersPanel">
-                    <div class="layer-item active" data-layer-id="0">
-                        <input type="checkbox" checked class="layer-visibility" data-layer-id="0">
-                        <span class="layer-name">Background</span>
-                        <button class="layer-delete" data-layer-id="0">×</button>
+                
+                <div class="panel-section">
+                    <h3 class="panel-header" data-panel="layers">
+                        <span class="panel-title">Layers</span>
+                        <span class="panel-toggle">▼</span>
+                    </h3>
+                    <div class="panel-content" id="layersSection">
+                        <div class="layers-panel" id="layersPanel">
+                            <div class="layer-item active" data-layer-id="0">
+                                <input type="checkbox" checked class="layer-visibility" data-layer-id="0">
+                                <span class="layer-name">Background</span>
+                                <button class="layer-delete" data-layer-id="0">×</button>
+                            </div>
+                        </div>
+                        <div class="layer-controls">
+                            <button class="tool-btn" id="addLayerBtn">+ Add Layer</button>
+                            <button class="tool-btn" id="mergeLayersBtn">Merge Down</button>
+                        </div>
                     </div>
                 </div>
-                <div class="layer-controls">
-                    <button class="tool-btn" id="addLayerBtn">+ Add Layer</button>
-                    <button class="tool-btn" id="mergeLayersBtn">Merge Down</button>
+
+                <div class="panel-section">
+                    <h3 class="panel-header" data-panel="transforms">
+                        <span class="panel-title">Transforms</span>
+                        <span class="panel-toggle">▼</span>
+                    </h3>
+                    <div class="panel-content" id="transformsPanel">
+                        <div class="transform-controls">
+                            <button class="tool-btn" id="resizeBtn">Resize</button>
+                            <button class="tool-btn" id="rotateBtn">Rotate 90°</button>
+                            <button class="tool-btn" id="flipHBtn">Flip H</button>
+                            <button class="tool-btn" id="flipVBtn">Flip V</button>
+                        </div>
+                    </div>
                 </div>
 
-                <h3>Transforms</h3>
-                <div class="transform-controls">
-                    <button class="tool-btn" id="resizeBtn">Resize</button>
-                    <button class="tool-btn" id="rotateBtn">Rotate 90°</button>
-                    <button class="tool-btn" id="flipHBtn">Flip H</button>
-                    <button class="tool-btn" id="flipVBtn">Flip V</button>
+                <div class="panel-section">
+                    <h3 class="panel-header" data-panel="effects">
+                        <span class="panel-title">Effects</span>
+                        <span class="panel-toggle">▼</span>
+                    </h3>
+                    <div class="panel-content" id="effectsPanel">
+                        <div class="effects-panel">
+                            <button class="tool-btn" id="brightnessBtn">Brightness</button>
+                            <button class="tool-btn" id="contrastBtn">Contrast</button>
+                            <button class="tool-btn" id="grayscaleBtn">Grayscale</button>
+                            <button class="tool-btn" id="invertBtn">Invert</button>
+                            <button class="tool-btn" id="blurBtn">Blur</button>
+                            <button class="tool-btn" id="sharpenBtn">Sharpen</button>
+                        </div>
+                    </div>
                 </div>
 
-                <h3>Effects</h3>
-                <div class="effects-panel">
-                    <button class="tool-btn" id="brightnessBtn">Brightness</button>
-                    <button class="tool-btn" id="contrastBtn">Contrast</button>
-                    <button class="tool-btn" id="grayscaleBtn">Grayscale</button>
-                    <button class="tool-btn" id="invertBtn">Invert</button>
-                    <button class="tool-btn" id="blurBtn">Blur</button>
-                    <button class="tool-btn" id="sharpenBtn">Sharpen</button>
+                <div class="panel-section">
+                    <h3 class="panel-header" data-panel="metadata">
+                        <span class="panel-title">Metadata</span>
+                        <span class="panel-toggle">▼</span>
+                    </h3>
+                    <div class="panel-content collapsed" id="metadataPanel">
+                        <div class="metadata-table">
+                            <table id="metadataTable">
+                                <tbody id="metadataTableBody">
+                                    <!-- Metadata rows will be populated here -->
+                                </tbody>
+                            </table>
+                            <button class="tool-btn" id="addMetadataFieldBtn" style="width: 100%; margin-top: 5px;">+ Add Field</button>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -242,28 +300,6 @@
         </div>
     </div>
 
-    <div id="metadataModal" class="modal">
-        <div class="modal-content">
-            <h2>Image Metadata</h2>
-            <label>Title:
-                <input type="text" id="metaTitle" style="width: 100%; padding: 8px; margin-top: 5px; background: #3d3d3d; border: 1px solid #4d4d4d; color: #e0e0e0; border-radius: 4px;">
-            </label>
-            <label>Author:
-                <input type="text" id="metaAuthor" style="width: 100%; padding: 8px; margin-top: 5px; background: #3d3d3d; border: 1px solid #4d4d4d; color: #e0e0e0; border-radius: 4px;">
-            </label>
-            <label>Description:
-                <textarea id="metaDescription" rows="3" style="width: 100%; padding: 8px; margin-top: 5px; background: #3d3d3d; border: 1px solid #4d4d4d; color: #e0e0e0; border-radius: 4px; resize: vertical; font-family: inherit;"></textarea>
-            </label>
-            <label>Copyright:
-                <input type="text" id="metaCopyright" style="width: 100%; padding: 8px; margin-top: 5px; background: #3d3d3d; border: 1px solid #4d4d4d; color: #e0e0e0; border-radius: 4px;">
-            </label>
-            <div class="modal-buttons">
-                <button id="applyMetadataBtn">Save</button>
-                <button id="cancelMetadataBtn">Cancel</button>
-            </div>
-        </div>
-    </div>
-
     <div id="layerDurationModal" class="modal">
         <div class="modal-content">
             <h2>Set Layer Duration</h2>
@@ -303,6 +339,19 @@
             <div class="modal-buttons">
                 <button id="applyImageDimensionsBtn">Apply</button>
                 <button id="cancelImageDimensionsBtn">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="addMetadataFieldModal" class="modal">
+        <div class="modal-content">
+            <h2>Add Metadata Field</h2>
+            <label>Field Name:
+                <input type="text" id="newMetadataFieldName" placeholder="e.g., Keywords" style="width: 100%; padding: 8px; margin-top: 5px; background: #3d3d3d; border: 1px solid #4d4d4d; color: #e0e0e0; border-radius: 4px;">
+            </label>
+            <div class="modal-buttons">
+                <button id="applyAddMetadataFieldBtn">Add</button>
+                <button id="cancelAddMetadataFieldBtn">Cancel</button>
             </div>
         </div>
     </div>
