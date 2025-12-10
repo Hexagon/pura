@@ -17,7 +17,13 @@ const state = {
     opacity: 1.0,
     history: [],
     historyIndex: -1,
-    maxHistory: 50
+    maxHistory: 50,
+    metadata: {
+        title: '',
+        author: '',
+        description: '',
+        copyright: ''
+    }
 };
 
 // Initialize the application
@@ -34,6 +40,7 @@ function init() {
     fillLayer(0, '#FFFFFF');
     
     setupEventListeners();
+    restoreUIState();
     updateUI();
     saveState();
 }
@@ -51,7 +58,8 @@ function createLayer(name = 'Layer', isBackground = false) {
         ctx: canvas.getContext('2d', { willReadFrequently: true }),
         visible: true,
         opacity: 1.0,
-        isBackground: isBackground
+        isBackground: isBackground,
+        duration: 100 // Default duration in milliseconds for animations
     };
     
     state.layers.push(layer);
@@ -138,6 +146,15 @@ function updateLayersPanel() {
         nameSpan.className = 'layer-name';
         nameSpan.textContent = layer.name;
         
+        const durationSpan = document.createElement('span');
+        durationSpan.className = 'layer-duration';
+        durationSpan.textContent = `${layer.duration}ms`;
+        durationSpan.title = 'Click to edit duration';
+        durationSpan.addEventListener('click', (e) => {
+            e.stopPropagation();
+            showLayerDurationModal(index);
+        });
+        
         const deleteBtn = document.createElement('button');
         deleteBtn.className = 'layer-delete';
         deleteBtn.textContent = '×';
@@ -148,6 +165,7 @@ function updateLayersPanel() {
         
         layerItem.appendChild(checkbox);
         layerItem.appendChild(nameSpan);
+        layerItem.appendChild(durationSpan);
         if (!layer.isBackground || state.layers.length > 1) {
             layerItem.appendChild(deleteBtn);
         }
@@ -273,33 +291,64 @@ async function handleFileUpload(e) {
     try {
         const image = await Image.read(uint8Array);
         
-        // Resize canvas to fit image
-        state.canvas.width = image.width;
-        state.canvas.height = image.height;
+        // Check if image has multiple frames
+        const isMultiFrame = image.frames && image.frames.length > 1;
         
-        // Resize all existing layers
-        state.layers.forEach(layer => {
-            const tempCanvas = document.createElement('canvas');
-            tempCanvas.width = image.width;
-            tempCanvas.height = image.height;
-            const tempCtx = tempCanvas.getContext('2d');
-            tempCtx.drawImage(layer.canvas, 0, 0);
+        if (isMultiFrame) {
+            // Load each frame as a separate layer
+            state.canvas.width = image.width;
+            state.canvas.height = image.height;
             
-            layer.canvas.width = image.width;
-            layer.canvas.height = image.height;
-            layer.ctx.drawImage(tempCanvas, 0, 0);
-        });
-        
-        // Create new layer with the loaded image
-        const newLayer = createLayer(file.name);
-        
-        // Convert image data to ImageData and draw
-        const imageData = new ImageData(
-            new Uint8ClampedArray(image.data),
-            image.width,
-            image.height
-        );
-        newLayer.ctx.putImageData(imageData, 0, 0);
+            // Clear existing layers
+            state.layers = [];
+            
+            for (let i = 0; i < image.frames.length; i++) {
+                const frame = image.frames[i];
+                const layer = createLayer(`${file.name} - Frame ${i + 1}`);
+                
+                // Set duration if available
+                if (frame.duration !== undefined) {
+                    layer.duration = frame.duration;
+                }
+                
+                // Convert frame data to ImageData and draw
+                const imageData = new ImageData(
+                    new Uint8ClampedArray(frame.data),
+                    frame.width,
+                    frame.height
+                );
+                layer.ctx.putImageData(imageData, 0, 0);
+            }
+        } else {
+            // Single frame image
+            // Resize canvas to fit image
+            state.canvas.width = image.width;
+            state.canvas.height = image.height;
+            
+            // Resize all existing layers
+            state.layers.forEach(layer => {
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = image.width;
+                tempCanvas.height = image.height;
+                const tempCtx = tempCanvas.getContext('2d');
+                tempCtx.drawImage(layer.canvas, 0, 0);
+                
+                layer.canvas.width = image.width;
+                layer.canvas.height = image.height;
+                layer.ctx.drawImage(tempCanvas, 0, 0);
+            });
+            
+            // Create new layer with the loaded image
+            const newLayer = createLayer(file.name);
+            
+            // Convert image data to ImageData and draw
+            const imageData = new ImageData(
+                new Uint8ClampedArray(image.data),
+                image.width,
+                image.height
+            );
+            newLayer.ctx.putImageData(imageData, 0, 0);
+        }
         
         composeLayers();
         saveState();
@@ -310,28 +359,146 @@ async function handleFileUpload(e) {
 }
 
 async function saveImage() {
+    // Show save dialog instead of immediately saving
+    const modal = document.getElementById('saveModal');
+    modal.classList.add('active');
+}
+
+async function applySaveImage() {
     try {
-        // Get the composed image data from main canvas
-        const imageData = state.ctx.getImageData(0, 0, state.canvas.width, state.canvas.height);
+        const format = document.getElementById('saveFormat').value;
+        const quality = parseInt(document.getElementById('saveQuality').value);
+        const multiFrame = document.getElementById('saveMultiFrame').checked;
+        const filename = document.getElementById('saveFilename').value || 'crimshop-export';
         
-        // Create Image instance from canvas data
-        const image = Image.fromRGBA(
-            state.canvas.width,
-            state.canvas.height,
-            new Uint8Array(imageData.data)
-        );
+        let fileData;
+        let mimeType;
+        let extension;
         
-        // Save as PNG
-        const pngData = await image.save('png');
+        if (multiFrame && (format === 'gif' || format === 'apng' || format === 'tiff')) {
+            // Multi-frame export
+            const frames = [];
+            
+            for (const layer of state.layers) {
+                if (!layer.visible) continue;
+                
+                // Create a temporary canvas to render this layer
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = state.canvas.width;
+                tempCanvas.height = state.canvas.height;
+                const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
+                
+                // Draw the layer
+                tempCtx.globalAlpha = layer.opacity;
+                tempCtx.drawImage(layer.canvas, 0, 0);
+                tempCtx.globalAlpha = 1.0;
+                
+                const imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+                
+                frames.push({
+                    width: tempCanvas.width,
+                    height: tempCanvas.height,
+                    data: new Uint8Array(imageData.data),
+                    duration: layer.duration
+                });
+            }
+            
+            // Create multi-frame image
+            const image = Image.fromRGBA(
+                frames[0].width,
+                frames[0].height,
+                frames[0].data
+            );
+            
+            // Add additional frames
+            for (let i = 1; i < frames.length; i++) {
+                image.addFrame(frames[i].data, frames[i].duration);
+            }
+            
+            // Encode based on format
+            if (format === 'gif') {
+                fileData = await image.save('gif');
+                mimeType = 'image/gif';
+                extension = 'gif';
+            } else if (format === 'apng') {
+                fileData = await image.save('apng');
+                mimeType = 'image/apng';
+                extension = 'apng';
+            } else if (format === 'tiff') {
+                fileData = await image.save('tiff');
+                mimeType = 'image/tiff';
+                extension = 'tiff';
+            }
+        } else {
+            // Single frame export - compose all layers
+            const imageData = state.ctx.getImageData(0, 0, state.canvas.width, state.canvas.height);
+            
+            // Create Image instance from canvas data
+            const image = Image.fromRGBA(
+                state.canvas.width,
+                state.canvas.height,
+                new Uint8Array(imageData.data)
+            );
+            
+            // Apply metadata if available
+            if (state.metadata.title || state.metadata.author || state.metadata.description) {
+                image.metadata = { ...state.metadata };
+            }
+            
+            // Save in selected format
+            switch (format) {
+                case 'png':
+                    fileData = await image.save('png');
+                    mimeType = 'image/png';
+                    extension = 'png';
+                    break;
+                case 'jpeg':
+                    fileData = await image.save('jpeg', { quality: quality / 100 });
+                    mimeType = 'image/jpeg';
+                    extension = 'jpg';
+                    break;
+                case 'webp':
+                    fileData = await image.save('webp', { quality: quality / 100 });
+                    mimeType = 'image/webp';
+                    extension = 'webp';
+                    break;
+                case 'gif':
+                    fileData = await image.save('gif');
+                    mimeType = 'image/gif';
+                    extension = 'gif';
+                    break;
+                case 'apng':
+                    fileData = await image.save('apng');
+                    mimeType = 'image/apng';
+                    extension = 'apng';
+                    break;
+                case 'tiff':
+                    fileData = await image.save('tiff');
+                    mimeType = 'image/tiff';
+                    extension = 'tiff';
+                    break;
+                case 'bmp':
+                    fileData = await image.save('bmp');
+                    mimeType = 'image/bmp';
+                    extension = 'bmp';
+                    break;
+                default:
+                    fileData = await image.save('png');
+                    mimeType = 'image/png';
+                    extension = 'png';
+            }
+        }
         
         // Create download link
-        const blob = new Blob([pngData], { type: 'image/png' });
+        const blob = new Blob([fileData], { type: mimeType });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = 'crimshop-export.png';
+        a.download = `${filename}.${extension}`;
         a.click();
         URL.revokeObjectURL(url);
+        
+        closeModal('saveModal');
     } catch (error) {
         console.error('Error saving image:', error);
         alert('Error saving image: ' + error.message);
@@ -623,6 +790,7 @@ function saveState() {
             visible: layer.visible,
             opacity: layer.opacity,
             isBackground: layer.isBackground,
+            duration: layer.duration,
             imageData: canvas
         };
     });
@@ -678,7 +846,8 @@ function restoreState(historyState) {
             ctx: ctx,
             visible: layerState.visible,
             opacity: layerState.opacity,
-            isBackground: layerState.isBackground
+            isBackground: layerState.isBackground,
+            duration: layerState.duration || 100
         };
     });
     
@@ -693,6 +862,66 @@ function restoreState(historyState) {
 function updateUI() {
     document.getElementById('undoBtn').disabled = state.historyIndex <= 0;
     document.getElementById('redoBtn').disabled = state.historyIndex >= state.history.length - 1;
+}
+
+// Metadata Editor
+function showMetadataEditor() {
+    document.getElementById('metaTitle').value = state.metadata.title || '';
+    document.getElementById('metaAuthor').value = state.metadata.author || '';
+    document.getElementById('metaDescription').value = state.metadata.description || '';
+    document.getElementById('metaCopyright').value = state.metadata.copyright || '';
+    
+    const modal = document.getElementById('metadataModal');
+    modal.classList.add('active');
+}
+
+function applyMetadata() {
+    state.metadata.title = document.getElementById('metaTitle').value;
+    state.metadata.author = document.getElementById('metaAuthor').value;
+    state.metadata.description = document.getElementById('metaDescription').value;
+    state.metadata.copyright = document.getElementById('metaCopyright').value;
+    
+    closeModal('metadataModal');
+}
+
+// Layer Duration Editor
+function showLayerDurationModal(layerIndex) {
+    state.tempLayerIndex = layerIndex;
+    const layer = state.layers[layerIndex];
+    document.getElementById('layerDurationInput').value = layer.duration;
+    
+    const modal = document.getElementById('layerDurationModal');
+    modal.classList.add('active');
+}
+
+function applyLayerDuration() {
+    const duration = parseInt(document.getElementById('layerDurationInput').value);
+    if (duration >= 10) {
+        state.layers[state.tempLayerIndex].duration = duration;
+        updateLayersPanel();
+        saveState();
+    }
+    closeModal('layerDurationModal');
+}
+
+// Collapsible Sidebar Functions
+function toggleSidebar(sidebarId) {
+    const sidebar = document.getElementById(sidebarId);
+    sidebar.classList.toggle('collapsed');
+    
+    // Save state to localStorage
+    const isCollapsed = sidebar.classList.contains('collapsed');
+    localStorage.setItem(`${sidebarId}-collapsed`, isCollapsed);
+}
+
+function restoreUIState() {
+    // Restore sidebar collapse states
+    ['leftSidebar', 'rightSidebar'].forEach(sidebarId => {
+        const isCollapsed = localStorage.getItem(`${sidebarId}-collapsed`) === 'true';
+        if (isCollapsed) {
+            document.getElementById(sidebarId).classList.add('collapsed');
+        }
+    });
 }
 
 function closeModal(modalId) {
@@ -799,6 +1028,44 @@ function setupEventListeners() {
     // Effect slider update
     document.getElementById('effectSlider').addEventListener('input', (e) => {
         document.getElementById('effectValue').textContent = e.target.value;
+    });
+    
+    // Save modal controls
+    document.getElementById('saveFormat').addEventListener('change', (e) => {
+        const format = e.target.value;
+        const qualityLabel = document.getElementById('qualityLabel');
+        
+        // Show quality slider for JPEG and WebP
+        if (format === 'jpeg' || format === 'webp') {
+            qualityLabel.style.display = 'block';
+        } else {
+            qualityLabel.style.display = 'none';
+        }
+    });
+    
+    document.getElementById('saveQuality').addEventListener('input', (e) => {
+        document.getElementById('qualityValue').textContent = e.target.value;
+    });
+    
+    document.getElementById('applySaveBtn').addEventListener('click', applySaveImage);
+    document.getElementById('cancelSaveBtn').addEventListener('click', () => closeModal('saveModal'));
+    
+    // Metadata modal controls
+    document.getElementById('metadataBtn').addEventListener('click', showMetadataEditor);
+    document.getElementById('applyMetadataBtn').addEventListener('click', applyMetadata);
+    document.getElementById('cancelMetadataBtn').addEventListener('click', () => closeModal('metadataModal'));
+    
+    // Layer duration modal controls
+    document.getElementById('applyLayerDurationBtn').addEventListener('click', applyLayerDuration);
+    document.getElementById('cancelLayerDurationBtn').addEventListener('click', () => closeModal('layerDurationModal'));
+    
+    // Collapsible sidebar controls
+    document.getElementById('leftCollapseToggle').addEventListener('click', () => {
+        toggleSidebar('leftSidebar');
+    });
+    
+    document.getElementById('rightCollapseToggle').addEventListener('click', () => {
+        toggleSidebar('rightSidebar');
     });
     
     // Resize width/height linking
