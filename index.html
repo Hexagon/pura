@@ -12,27 +12,27 @@
         <div class="toolbar">
             <div class="toolbar-section">
                 <button class="tool-btn" id="newBtn" title="New Image">
-                    <span>📄</span> New
+                    <span>📄</span>
                 </button>
                 <button class="tool-btn" id="openBtn" title="Open Image">
-                    <span>📂</span> Open
+                    <span>📂</span>
                 </button>
                 <button class="tool-btn" id="importLayerBtn" title="Import as Layer">
-                    <span>📥</span> Import Layer
+                    <span>📥</span>
                 </button>
                 <button class="tool-btn" id="saveBtn" title="Save Image">
-                    <span>💾</span> Save
+                    <span>💾</span>
                 </button>
                 <button class="tool-btn" id="imageDimensionsBtn" title="Image Dimensions">
-                    <span>📐</span> Dimensions
+                    <span>📐</span>
                 </button>
             </div>
             <div class="toolbar-section">
                 <button class="tool-btn" id="undoBtn" title="Undo">
-                    <span>↶</span> Undo
+                    <span>↶</span>
                 </button>
                 <button class="tool-btn" id="redoBtn" title="Redo">
-                    <span>↷</span> Redo
+                    <span>↷</span>
                 </button>
             </div>
         </div>
@@ -57,34 +57,40 @@
                     <div class="panel-content" id="toolsPanel">
                         <div class="tool-group">
                             <button class="tool-btn active" data-tool="pointer" title="Pointer (Select Layer)">
-                                <span>↖️</span> Pointer
+                                <span>↖️</span>
                             </button>
                             <button class="tool-btn" data-tool="rectSelect" title="Rectangular Selection">
-                                <span>🔲</span> Rect Select
+                                <span>🔲</span>
                             </button>
                             <button class="tool-btn" data-tool="freeformSelect" title="Freeform Selection">
-                                <span>✂️</span> Lasso
+                                <span>✂️</span>
                             </button>
                             <button class="tool-btn" data-tool="move" title="Move Layer">
-                                <span>✋</span> Move
+                                <span>✋</span>
                             </button>
                             <button class="tool-btn" data-tool="brush" title="Brush">
-                                <span>🖌️</span> Brush
+                                <span>🖌️</span>
                             </button>
                             <button class="tool-btn" data-tool="eraser" title="Eraser">
-                                <span>🧹</span> Eraser
+                                <span>🧹</span>
+                            </button>
+                            <button class="tool-btn" data-tool="fill" title="Fill">
+                                <span>🪣</span>
+                            </button>
+                            <button class="tool-btn" data-tool="gradient" title="Gradient">
+                                <span>🌈</span>
                             </button>
                             <button class="tool-btn" data-tool="rect" title="Rectangle">
-                                <span>⬜</span> Rect
+                                <span>⬜</span>
                             </button>
                             <button class="tool-btn" data-tool="circle" title="Circle">
-                                <span>⭕</span> Circle
+                                <span>⭕</span>
                             </button>
                             <button class="tool-btn" data-tool="line" title="Line">
-                                <span>📏</span> Line
+                                <span>📏</span>
                             </button>
                             <button class="tool-btn" data-tool="text" title="Text">
-                                <span>T</span> Text
+                                <span>T</span>
                             </button>
                         </div>
                     </div>
@@ -98,11 +104,22 @@
                     <div class="panel-content" id="toolOptionsPanel">
                         <div class="tool-options-group" id="selectionOptions" style="display: none;">
                             <button class="tool-btn" id="selectAllBtn" title="Select All (Ctrl+A)">
-                                <span>📋</span> Select All
+                                <span>📋</span>
                             </button>
                             <button class="tool-btn" id="deselectBtn" title="Deselect">
-                                <span>✖️</span> Deselect
+                                <span>✖️</span>
                             </button>
+                        </div>
+                        <div class="tool-options-group" id="fillOptions" style="display: none;">
+                            <label>Tolerance: <span id="fillToleranceValue">32</span></label>
+                            <input type="range" id="fillTolerance" min="0" max="255" value="32">
+                        </div>
+                        <div class="tool-options-group" id="gradientOptions" style="display: none;">
+                            <label>Type:</label>
+                            <select id="gradientType">
+                                <option value="linear">Linear</option>
+                                <option value="radial">Radial</option>
+                            </select>
                         </div>
                     </div>
                 </div>

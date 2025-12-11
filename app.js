@@ -482,12 +482,26 @@ function updateToolOptions() {
     if (!state) return;
     
     const selectionOptions = document.getElementById('selectionOptions');
+    const fillOptions = document.getElementById('fillOptions');
+    const gradientOptions = document.getElementById('gradientOptions');
     const isSelectionTool = ['pointer', 'rectSelect', 'freeformSelect'].includes(state.tool);
     
     if (isSelectionTool) {
         selectionOptions.style.display = 'block';
     } else {
         selectionOptions.style.display = 'none';
+    }
+    
+    if (state.tool === 'fill') {
+        fillOptions.style.display = 'block';
+    } else {
+        fillOptions.style.display = 'none';
+    }
+    
+    if (state.tool === 'gradient') {
+        gradientOptions.style.display = 'block';
+    } else {
+        gradientOptions.style.display = 'none';
     }
 }
 
@@ -990,6 +1004,17 @@ function setupEventListeners() {
     document.getElementById('opacity').addEventListener('input', (e) => {
         state.opacity = parseInt(e.target.value) / 100;
         document.getElementById('opacityValue').textContent = e.target.value;
+    });
+    
+    // Fill tool settings
+    document.getElementById('fillTolerance').addEventListener('input', (e) => {
+        state.fillTolerance = parseInt(e.target.value);
+        document.getElementById('fillToleranceValue').textContent = state.fillTolerance;
+    });
+    
+    // Gradient tool settings
+    document.getElementById('gradientType').addEventListener('change', (e) => {
+        state.gradientType = e.target.value;
     });
     
     // Layer controls

@@ -22,6 +22,8 @@ export function createWorkspaceState(canvas, ctx) {
         backgroundColor: '#FFFFFF',
         brushSize: 10,
         opacity: 1.0,
+        fillTolerance: 32,
+        gradientType: 'linear',
         history: [],
         historyIndex: -1,
         maxHistory: 50,
