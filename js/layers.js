@@ -14,7 +14,9 @@ export function createLayerObject(workspaceState, name, isBackground = false) {
         visible: true,
         opacity: 1.0,
         isBackground: isBackground,
-        duration: 100
+        duration: 100,
+        offsetX: 0,
+        offsetY: 0
     };
 }
 
@@ -39,7 +41,9 @@ export function createLayer(state, name = 'Layer', isBackground = false) {
         visible: true,
         opacity: 1.0,
         isBackground: isBackground,
-        duration: 100
+        duration: 100,
+        offsetX: 0,
+        offsetY: 0
     };
     
     state.layers.push(layer);
@@ -92,26 +96,29 @@ export function composeLayers(state) {
     // Clear main canvas
     state.ctx.clearRect(0, 0, state.canvas.width, state.canvas.height);
     
-    // Draw layers from bottom to top
+    // Draw layers from bottom to top at their offset positions
     state.layers.forEach((layer, index) => {
         if (layer.visible) {
             state.ctx.globalAlpha = layer.opacity;
-            state.ctx.drawImage(layer.canvas, 0, 0);
+            const offsetX = layer.offsetX || 0;
+            const offsetY = layer.offsetY || 0;
+            state.ctx.drawImage(layer.canvas, offsetX, offsetY);
         }
     });
     
     state.ctx.globalAlpha = 1.0;
     
-    // Draw dashed border around active layer if it's smaller than workspace
+    // Draw dashed border around active layer bounds (always show when layer exists)
     if (state.activeLayerIndex !== undefined && state.layers[state.activeLayerIndex]) {
         const activeLayer = state.layers[state.activeLayerIndex];
-        if (activeLayer.canvas.width < state.canvas.width || activeLayer.canvas.height < state.canvas.height) {
-            state.ctx.save();
-            state.ctx.strokeStyle = '#ff0000';
-            state.ctx.lineWidth = 2;
-            state.ctx.setLineDash([8, 8]);
-            state.ctx.strokeRect(0, 0, activeLayer.canvas.width, activeLayer.canvas.height);
-            state.ctx.restore();
-        }
+        const offsetX = activeLayer.offsetX || 0;
+        const offsetY = activeLayer.offsetY || 0;
+        
+        state.ctx.save();
+        state.ctx.strokeStyle = '#ff0000';
+        state.ctx.lineWidth = 2;
+        state.ctx.setLineDash([8, 8]);
+        state.ctx.strokeRect(offsetX, offsetY, activeLayer.canvas.width, activeLayer.canvas.height);
+        state.ctx.restore();
     }
 }

@@ -1,4 +1,6 @@
-![Pura Logo](img/pura.png)
+<div align="center">
+  <img src="img/pura.png" alt="Pura Logo" height="50%">
+</div>
 
 # Pura - Image Editor
 

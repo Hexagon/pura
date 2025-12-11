@@ -20,6 +20,8 @@ export function saveState(state, updateUIFn, updateLayersPanelFn = null, compose
             opacity: layer.opacity,
             isBackground: layer.isBackground,
             duration: layer.duration,
+            offsetX: layer.offsetX || 0,
+            offsetY: layer.offsetY || 0,
             imageData: canvas
         };
     });
@@ -81,7 +83,9 @@ export function restoreState(state, historyState, updateLayersPanelFn, composeLa
             visible: layerState.visible,
             opacity: layerState.opacity,
             isBackground: layerState.isBackground,
-            duration: layerState.duration || 100
+            duration: layerState.duration || 100,
+            offsetX: layerState.offsetX || 0,
+            offsetY: layerState.offsetY || 0
         };
     });
     

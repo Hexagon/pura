@@ -11,6 +11,16 @@ export function getMousePos(state, e) {
     };
 }
 
+// Convert workspace coordinates to layer-local coordinates
+function toLayerCoords(layer, x, y) {
+    const offsetX = layer.offsetX || 0;
+    const offsetY = layer.offsetY || 0;
+    return {
+        x: x - offsetX,
+        y: y - offsetY
+    };
+}
+
 // Flood fill algorithm
 function floodFill(imageData, x, y, fillColor, tolerance) {
     const width = imageData.width;
@@ -87,12 +97,15 @@ export function startDrawing(state, e, composeLayers) {
     const layer = state.layers[state.activeLayerIndex];
     
     if (state.tool === 'fill') {
+        // Convert workspace coordinates to layer-local coordinates
+        const layerPos = toLayerCoords(layer, pos.x, pos.y);
+        
         // Only fill if within layer bounds
-        if (pos.x >= 0 && pos.x < layer.canvas.width && pos.y >= 0 && pos.y < layer.canvas.height) {
+        if (layerPos.x >= 0 && layerPos.x < layer.canvas.width && layerPos.y >= 0 && layerPos.y < layer.canvas.height) {
             // Perform flood fill immediately
             const imageData = layer.ctx.getImageData(0, 0, layer.canvas.width, layer.canvas.height);
             const tolerance = state.fillTolerance || 32;
-            floodFill(imageData, pos.x, pos.y, state.foregroundColor, tolerance);
+            floodFill(imageData, layerPos.x, layerPos.y, state.foregroundColor, tolerance);
             layer.ctx.putImageData(imageData, 0, 0);
             composeLayers();
         }
@@ -143,13 +156,16 @@ export function startDrawing(state, e, composeLayers) {
     layer.ctx.rect(0, 0, layer.canvas.width, layer.canvas.height);
     layer.ctx.clip();
     
+    // Convert workspace coordinates to layer-local coordinates for drawing
+    const layerStart = toLayerCoords(layer, state.startX, state.startY);
+    
     if (state.tool === 'brush') {
         layer.ctx.beginPath();
-        layer.ctx.moveTo(state.startX, state.startY);
+        layer.ctx.moveTo(layerStart.x, layerStart.y);
     } else if (state.tool === 'eraser') {
         layer.ctx.globalCompositeOperation = 'destination-out';
         layer.ctx.beginPath();
-        layer.ctx.moveTo(state.startX, state.startY);
+        layer.ctx.moveTo(layerStart.x, layerStart.y);
     }
 }
 
@@ -164,15 +180,18 @@ export function draw(state, e, composeLayers) {
     
     const layer = state.layers[state.activeLayerIndex];
     
+    // Convert workspace coordinates to layer-local coordinates for drawing
+    const layerPos = toLayerCoords(layer, pos.x, pos.y);
+    
     switch (state.tool) {
         case 'brush':
-            layer.ctx.lineTo(pos.x, pos.y);
+            layer.ctx.lineTo(layerPos.x, layerPos.y);
             layer.ctx.stroke();
             composeLayers();
             break;
             
         case 'eraser':
-            layer.ctx.lineTo(pos.x, pos.y);
+            layer.ctx.lineTo(layerPos.x, layerPos.y);
             layer.ctx.stroke();
             composeLayers();
             break;
@@ -314,10 +333,12 @@ export function draw(state, e, composeLayers) {
             state.moveOffsetX = pos.x - state.startX;
             state.moveOffsetY = pos.y - state.startY;
             
-            // Clear preview and show moved layer
+            // Clear preview and show moved layer at its new offset position
             state.previewCtx.clearRect(0, 0, state.previewCanvas.width, state.previewCanvas.height);
             state.previewCtx.globalAlpha = 0.7;
-            state.previewCtx.drawImage(layer.canvas, state.moveOffsetX, state.moveOffsetY);
+            const currentOffsetX = (layer.offsetX || 0) + state.moveOffsetX;
+            const currentOffsetY = (layer.offsetY || 0) + state.moveOffsetY;
+            state.previewCtx.drawImage(layer.canvas, currentOffsetX, currentOffsetY);
             state.previewCtx.globalAlpha = 1.0;
             break;
     }
@@ -340,22 +361,25 @@ export function stopDrawing(state, e, composeLayers, saveState) {
             break;
             
         case 'gradient':
-            // Apply gradient to layer
+            // Apply gradient to layer (use layer-local coordinates)
             const gradientType = state.gradientType || 'linear';
             let gradient;
             
+            const layerStart = toLayerCoords(layer, state.startX, state.startY);
+            const layerEnd = toLayerCoords(layer, pos.x, pos.y);
+            
             if (gradientType === 'linear') {
                 gradient = layer.ctx.createLinearGradient(
-                    state.startX, state.startY, pos.x, pos.y
+                    layerStart.x, layerStart.y, layerEnd.x, layerEnd.y
                 );
             } else {
                 const radius = Math.sqrt(
-                    Math.pow(pos.x - state.startX, 2) + 
-                    Math.pow(pos.y - state.startY, 2)
+                    Math.pow(layerEnd.x - layerStart.x, 2) + 
+                    Math.pow(layerEnd.y - layerStart.y, 2)
                 );
                 gradient = layer.ctx.createRadialGradient(
-                    state.startX, state.startY, 0,
-                    state.startX, state.startY, radius
+                    layerStart.x, layerStart.y, 0,
+                    layerStart.x, layerStart.y, radius
                 );
             }
             
@@ -369,39 +393,45 @@ export function stopDrawing(state, e, composeLayers, saveState) {
             break;
             
         case 'rect':
-            const width = pos.x - state.startX;
-            const height = pos.y - state.startY;
+            const layerStartRect = toLayerCoords(layer, state.startX, state.startY);
+            const layerPosRect = toLayerCoords(layer, pos.x, pos.y);
+            const width = layerPosRect.x - layerStartRect.x;
+            const height = layerPosRect.y - layerStartRect.y;
             layer.ctx.save();
             layer.ctx.beginPath();
             layer.ctx.rect(0, 0, layer.canvas.width, layer.canvas.height);
             layer.ctx.clip();
-            layer.ctx.strokeRect(state.startX, state.startY, width, height);
+            layer.ctx.strokeRect(layerStartRect.x, layerStartRect.y, width, height);
             layer.ctx.restore();
             break;
             
         case 'circle':
+            const layerStartCircle = toLayerCoords(layer, state.startX, state.startY);
+            const layerPosCircle = toLayerCoords(layer, pos.x, pos.y);
             const radius = Math.sqrt(
-                Math.pow(pos.x - state.startX, 2) + 
-                Math.pow(pos.y - state.startY, 2)
+                Math.pow(layerPosCircle.x - layerStartCircle.x, 2) + 
+                Math.pow(layerPosCircle.y - layerStartCircle.y, 2)
             );
             layer.ctx.save();
             layer.ctx.beginPath();
             layer.ctx.rect(0, 0, layer.canvas.width, layer.canvas.height);
             layer.ctx.clip();
             layer.ctx.beginPath();
-            layer.ctx.arc(state.startX, state.startY, radius, 0, 2 * Math.PI);
+            layer.ctx.arc(layerStartCircle.x, layerStartCircle.y, radius, 0, 2 * Math.PI);
             layer.ctx.stroke();
             layer.ctx.restore();
             break;
             
         case 'line':
+            const layerStartLine = toLayerCoords(layer, state.startX, state.startY);
+            const layerPosLine = toLayerCoords(layer, pos.x, pos.y);
             layer.ctx.save();
             layer.ctx.beginPath();
             layer.ctx.rect(0, 0, layer.canvas.width, layer.canvas.height);
             layer.ctx.clip();
             layer.ctx.beginPath();
-            layer.ctx.moveTo(state.startX, state.startY);
-            layer.ctx.lineTo(pos.x, pos.y);
+            layer.ctx.moveTo(layerStartLine.x, layerStartLine.y);
+            layer.ctx.lineTo(layerPosLine.x, layerPosLine.y);
             layer.ctx.stroke();
             layer.ctx.restore();
             break;
@@ -442,35 +472,31 @@ export function stopDrawing(state, e, composeLayers, saveState) {
                     state.selectionPath = null;
                 }
             } else if (state.moveOffsetX !== 0 || state.moveOffsetY !== 0) {
-                // Move the entire layer - content outside bounds will be clipped
-                const offsetX = state.moveOffsetX;
-                const offsetY = state.moveOffsetY;
-                
-                // Save current layer content
-                const tempCanvas = document.createElement('canvas');
-                tempCanvas.width = layer.canvas.width;
-                tempCanvas.height = layer.canvas.height;
-                const tempCtx = tempCanvas.getContext('2d');
-                tempCtx.drawImage(layer.canvas, 0, 0);
-                
-                // Clear and redraw at new position (will clip automatically)
-                layer.ctx.clearRect(0, 0, layer.canvas.width, layer.canvas.height);
-                layer.ctx.drawImage(tempCanvas, offsetX, offsetY);
+                // Move the entire layer by adjusting its offset position
+                // This preserves data even when moved outside workspace bounds
+                layer.offsetX = (layer.offsetX || 0) + state.moveOffsetX;
+                layer.offsetY = (layer.offsetY || 0) + state.moveOffsetY;
             }
             break;
             
         case 'select':
         case 'rectSelect':
-            // Create rectangular selection
-            const selWidth = pos.x - state.startX;
-            const selHeight = pos.y - state.startY;
-            Selection.createRectSelection(state, state.startX, state.startY, selWidth, selHeight);
+            // Create rectangular selection (convert workspace coords to layer coords)
+            const layerStartSel = toLayerCoords(layer, state.startX, state.startY);
+            const layerPosSel = toLayerCoords(layer, pos.x, pos.y);
+            const selWidth = layerPosSel.x - layerStartSel.x;
+            const selHeight = layerPosSel.y - layerStartSel.y;
+            Selection.createRectSelection(state, layerStartSel.x, layerStartSel.y, selWidth, selHeight);
             break;
             
         case 'freeformSelect':
-            // Complete freeform selection
+            // Complete freeform selection (convert workspace coords to layer coords)
             if (state.selectionPath && state.selectionPath.length > 2) {
-                Selection.createFreeformSelection(state, state.selectionPath);
+                const layerPath = state.selectionPath.map(p => {
+                    const lp = toLayerCoords(layer, p.x, p.y);
+                    return { x: lp.x, y: lp.y };
+                });
+                Selection.createFreeformSelection(state, layerPath);
             }
             break;
             
