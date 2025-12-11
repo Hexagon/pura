@@ -35,7 +35,7 @@ export function createWorkspaceState(canvas, ctx) {
             copyright: '',
             // Standard EXIF fields
             artist: '',
-            software: 'CrimShop',
+            software: 'Pura',
             dateTime: '',
             make: '',
             model: '',

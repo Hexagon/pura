@@ -1,4 +1,4 @@
-# CrimShop - Client-Side Image Editor
+# Pura - Image Editor
 
 A powerful, client-side image editor built with vanilla JavaScript and the [cross-image](https://github.com/cross-org/image) library.
 
@@ -27,7 +27,7 @@ A powerful, client-side image editor built with vanilla JavaScript and the [cros
 
 ## Live Demo
 
-Visit [https://hexagon.github.io/crimshop/](https://hexagon.github.io/crimshop/) to try it out!
+Visit [https://hexagon.github.io/pura/](https://hexagon.github.io/pura/) to try it out!
 
 ## Usage
 
@@ -55,7 +55,7 @@ Visit [https://hexagon.github.io/crimshop/](https://hexagon.github.io/crimshop/)
 
 ## Architecture
 
-CrimShop uses a modular architecture with ES6 modules:
+Pura uses a modular architecture with ES6 modules:
 - **No build process**: Modules load directly in the browser
 - **8 focused modules**: Each handles a specific responsibility
 - **1,091 line main file**: Down from 1,764 (38% reduction)

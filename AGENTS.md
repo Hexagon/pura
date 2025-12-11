@@ -1,8 +1,8 @@
-# Agent Guidelines for CrimShop
+# Agent Guidelines for Pura
 
 ## Project Overview
 
-CrimShop is a client-side image editor built with vanilla JavaScript. It runs entirely in the browser with no build process.
+Pura is a client-side image editor built with vanilla JavaScript. It runs entirely in the browser with no build process.
 
 ## Architecture Principles
 
@@ -168,7 +168,7 @@ The project has no test infrastructure. Manual testing only.
 - Automatic deployment via `.github/workflows/pages.yml`
 - Triggers on push to `main` branch
 - No build step - deploys static files as-is
-- URL: `https://hexagon.github.io/crimshop/`
+- URL: `https://hexagon.github.io/pura/`
 
 ### Local Development
 ```bash

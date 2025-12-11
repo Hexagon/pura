@@ -203,7 +203,7 @@ export async function applySaveImage(state, hasMetadata, cleanMetadataForExport,
         const format = document.getElementById('saveFormat').value;
         const quality = parseInt(document.getElementById('saveQuality').value);
         const multiFrame = document.getElementById('saveMultiFrame').checked;
-        const filename = document.getElementById('saveFilename').value || 'crimshop-export';
+        const filename = document.getElementById('saveFilename').value || 'pura-export';
         
         let fileData;
         let mimeType;
