@@ -5,6 +5,9 @@ import { globalState, createWorkspaceState } from './js/state.js';
 import * as LayersModule from './js/layers.js';
 import * as HistoryModule from './js/history.js';
 import * as UIModule from './js/ui.js';
+import * as DrawingModule from './js/drawing.js';
+import * as FileIOModule from './js/file-io.js';
+import * as EffectsModule from './js/effects.js';
 
 // Application state (points to active workspace)
 let state = null;
@@ -323,520 +326,46 @@ function updateLayersPanel() {
 }
 
 // Drawing Functions
+// Drawing - using modules
 function getMousePos(e) {
-    const rect = state.canvas.getBoundingClientRect();
-    return {
-        x: (e.clientX - rect.left) * (state.canvas.width / rect.width),
-        y: (e.clientY - rect.top) * (state.canvas.height / rect.height)
-    };
+    return DrawingModule.getMousePos(state, e);
 }
 
 function startDrawing(e) {
-    const pos = getMousePos(e);
-    state.startX = pos.x;
-    state.startY = pos.y;
-    state.isDrawing = true;
-    
-    const layer = state.layers[state.activeLayerIndex];
-    
-    if (state.tool === 'move') {
-        // Store the offset for moving the layer
-        state.moveOffsetX = 0;
-        state.moveOffsetY = 0;
-        return;
-    }
-    
-    layer.ctx.strokeStyle = state.foregroundColor;
-    layer.ctx.fillStyle = state.foregroundColor;
-    layer.ctx.lineWidth = state.brushSize;
-    layer.ctx.lineCap = 'round';
-    layer.ctx.lineJoin = 'round';
-    layer.ctx.globalAlpha = state.opacity;
-    
-    if (state.tool === 'brush') {
-        layer.ctx.beginPath();
-        layer.ctx.moveTo(state.startX, state.startY);
-    } else if (state.tool === 'eraser') {
-        layer.ctx.globalCompositeOperation = 'destination-out';
-        layer.ctx.beginPath();
-        layer.ctx.moveTo(state.startX, state.startY);
-    }
+    DrawingModule.startDrawing(state, e, composeLayers);
 }
 
 function draw(e) {
-    const pos = getMousePos(e);
-    
-    if (!state.isDrawing) {
-        // Clear preview for non-drawing state
-        state.previewCtx.clearRect(0, 0, state.previewCanvas.width, state.previewCanvas.height);
-        return;
-    }
-    
-    const layer = state.layers[state.activeLayerIndex];
-    
-    switch (state.tool) {
-        case 'brush':
-            layer.ctx.lineTo(pos.x, pos.y);
-            layer.ctx.stroke();
-            composeLayers();
-            break;
-            
-        case 'eraser':
-            layer.ctx.lineTo(pos.x, pos.y);
-            layer.ctx.stroke();
-            composeLayers();
-            break;
-            
-        case 'rect':
-        case 'circle':
-        case 'line':
-        case 'select':
-            // Draw preview
-            state.previewCtx.clearRect(0, 0, state.previewCanvas.width, state.previewCanvas.height);
-            state.previewCtx.strokeStyle = state.foregroundColor;
-            state.previewCtx.lineWidth = state.brushSize;
-            state.previewCtx.globalAlpha = 0.7;
-            state.previewCtx.setLineDash([5, 5]);
-            
-            if (state.tool === 'rect' || state.tool === 'select') {
-                const width = pos.x - state.startX;
-                const height = pos.y - state.startY;
-                state.previewCtx.strokeRect(state.startX, state.startY, width, height);
-            } else if (state.tool === 'circle') {
-                const radius = Math.sqrt(
-                    Math.pow(pos.x - state.startX, 2) + 
-                    Math.pow(pos.y - state.startY, 2)
-                );
-                state.previewCtx.beginPath();
-                state.previewCtx.arc(state.startX, state.startY, radius, 0, 2 * Math.PI);
-                state.previewCtx.stroke();
-            } else if (state.tool === 'line') {
-                state.previewCtx.beginPath();
-                state.previewCtx.moveTo(state.startX, state.startY);
-                state.previewCtx.lineTo(pos.x, pos.y);
-                state.previewCtx.stroke();
-            }
-            
-            state.previewCtx.setLineDash([]);
-            state.previewCtx.globalAlpha = 1.0;
-            break;
-            
-        case 'move':
-            // Move the layer
-            state.moveOffsetX = pos.x - state.startX;
-            state.moveOffsetY = pos.y - state.startY;
-            
-            // Clear preview and show moved layer
-            state.previewCtx.clearRect(0, 0, state.previewCanvas.width, state.previewCanvas.height);
-            state.previewCtx.globalAlpha = 0.7;
-            state.previewCtx.drawImage(layer.canvas, state.moveOffsetX, state.moveOffsetY);
-            state.previewCtx.globalAlpha = 1.0;
-            break;
-    }
+    DrawingModule.draw(state, e, composeLayers);
 }
 
 function stopDrawing(e) {
-    if (!state.isDrawing) return;
-    
-    const pos = getMousePos(e);
-    const layer = state.layers[state.activeLayerIndex];
-    
-    // Clear preview
-    state.previewCtx.clearRect(0, 0, state.previewCanvas.width, state.previewCanvas.height);
-    
-    switch (state.tool) {
-        case 'brush':
-        case 'eraser':
-            // Already handled in draw()
-            break;
-            
-        case 'rect':
-            const width = pos.x - state.startX;
-            const height = pos.y - state.startY;
-            layer.ctx.strokeRect(state.startX, state.startY, width, height);
-            break;
-            
-        case 'circle':
-            const radius = Math.sqrt(
-                Math.pow(pos.x - state.startX, 2) + 
-                Math.pow(pos.y - state.startY, 2)
-            );
-            layer.ctx.beginPath();
-            layer.ctx.arc(state.startX, state.startY, radius, 0, 2 * Math.PI);
-            layer.ctx.stroke();
-            break;
-            
-        case 'line':
-            layer.ctx.beginPath();
-            layer.ctx.moveTo(state.startX, state.startY);
-            layer.ctx.lineTo(pos.x, pos.y);
-            layer.ctx.stroke();
-            break;
-            
-        case 'move':
-            // Apply the move to the layer
-            if (state.moveOffsetX !== 0 || state.moveOffsetY !== 0) {
-                const tempCanvas = document.createElement('canvas');
-                tempCanvas.width = layer.canvas.width;
-                tempCanvas.height = layer.canvas.height;
-                const tempCtx = tempCanvas.getContext('2d');
-                tempCtx.drawImage(layer.canvas, 0, 0);
-                
-                layer.ctx.clearRect(0, 0, layer.canvas.width, layer.canvas.height);
-                layer.ctx.drawImage(tempCanvas, state.moveOffsetX, state.moveOffsetY);
-            }
-            break;
-            
-        case 'select':
-            // Select tool doesn't draw, just shows selection
-            break;
-    }
-    
-    // Reset composite operation
-    layer.ctx.globalCompositeOperation = 'source-over';
-    layer.ctx.globalAlpha = 1.0;
-    
-    state.isDrawing = false;
-    composeLayers();
-    saveState();
+    DrawingModule.stopDrawing(state, e, composeLayers, saveState);
 }
 
-// File Operations
+// File Operations - using modules
 async function openImage() {
-    const input = document.getElementById('fileInput');
-    input.click();
+    FileIOModule.openImage(createWorkspace, createLayerObject, globalState, mergeMetadata, updateLayersPanel, updateMetadataTable, composeLayers, saveState);
 }
 
 async function handleFileUpload(e) {
-    const file = e.target.files[0];
-    if (!file) return;
-    
-    const arrayBuffer = await file.arrayBuffer();
-    const uint8Array = new Uint8Array(arrayBuffer);
-    
-    try {
-        const image = await Image.read(uint8Array);
-        
-        // Check if image has multiple frames
-        const isMultiFrame = image.frames && image.frames.length > 1;
-        
-        let width, height;
-        
-        if (isMultiFrame) {
-            // Find largest frame dimensions
-            let maxWidth = 0;
-            let maxHeight = 0;
-            for (const frame of image.frames) {
-                if (frame.width > maxWidth) maxWidth = frame.width;
-                if (frame.height > maxHeight) maxHeight = frame.height;
-            }
-            width = maxWidth;
-            height = maxHeight;
-        } else {
-            width = image.width;
-            height = image.height;
-        }
-        
-        // Create new workspace
-        const workspaceId = createWorkspace(file.name, width, height, 'transparent');
-        const workspaceState = globalState.workspaces.get(workspaceId);
-        
-        // Clear the default background layer
-        workspaceState.layers = [];
-        
-        if (isMultiFrame) {
-            // Load each frame as a separate layer
-            for (const [i, frame] of image.frames.entries()) {
-                const layer = createLayerObject(workspaceState, `${file.name} - Frame ${i + 1}`);
-                
-                // Set duration if available
-                if (frame.duration !== undefined) {
-                    layer.duration = frame.duration;
-                }
-                
-                // Convert frame data to ImageData and draw
-                const imageData = new ImageData(
-                    new Uint8ClampedArray(frame.data),
-                    frame.width,
-                    frame.height
-                );
-                layer.ctx.putImageData(imageData, 0, 0);
-                
-                workspaceState.layers.push(layer);
-            }
-            workspaceState.activeLayerIndex = 0;
-        } else {
-            // Single frame image - create layer with the loaded image
-            const newLayer = createLayerObject(workspaceState, file.name);
-            
-            // Convert image data to ImageData and draw
-            const imageData = new ImageData(
-                new Uint8ClampedArray(image.data),
-                image.width,
-                image.height
-            );
-            newLayer.ctx.putImageData(imageData, 0, 0);
-            
-            workspaceState.layers.push(newLayer);
-            workspaceState.activeLayerIndex = 0;
-        }
-        
-        // Re-index layers
-        workspaceState.layers.forEach((layer, index) => {
-            layer.id = index;
-        });
-        
-        // Load metadata from image if available
-        if (image.metadata) {
-            workspaceState.metadata = mergeMetadata(workspaceState.metadata, image.metadata);
-        }
-        
-        updateLayersPanel();
-        updateMetadataTable();
-        composeLayers();
-        saveState();
-    } catch (error) {
-        console.error('Error loading image:', error);
-        alert('Error loading image. Please try a different file.');
-    }
+    FileIOModule.handleFileUpload(e, createWorkspace, createLayerObject, globalState, mergeMetadata, updateLayersPanel, updateMetadataTable, composeLayers, saveState);
 }
 
 async function importAsLayer() {
-    // Check if we're in a workspace
-    if (globalState.activeWorkspaceId === 'start') {
-        alert('Please create or open an image first before importing layers.');
-        return;
-    }
-    
-    const input = document.getElementById('importLayerInput');
-    input.click();
+    FileIOModule.importAsLayer(globalState);
 }
 
 async function handleImportLayer(e) {
-    const file = e.target.files[0];
-    if (!file) return;
-    
-    // Check if we're in a workspace
-    if (globalState.activeWorkspaceId === 'start') {
-        alert('Please create or open an image first before importing layers.');
-        return;
-    }
-    
-    const arrayBuffer = await file.arrayBuffer();
-    const uint8Array = new Uint8Array(arrayBuffer);
-    
-    try {
-        const image = await Image.read(uint8Array);
-        
-        // Check if image has multiple frames
-        const isMultiFrame = image.frames && image.frames.length > 1;
-        
-        if (isMultiFrame) {
-            // Import each frame as a separate layer
-            for (const [i, frame] of image.frames.entries()) {
-                const layer = createLayer(`${file.name} - Frame ${i + 1}`);
-                
-                // Set duration if available
-                if (frame.duration !== undefined) {
-                    layer.duration = frame.duration;
-                }
-                
-                // Convert frame data to ImageData and draw
-                // Note: We don't change canvas dimensions, just draw the image
-                const imageData = new ImageData(
-                    new Uint8ClampedArray(frame.data),
-                    frame.width,
-                    frame.height
-                );
-                
-                // Create temporary canvas to hold the image
-                const tempCanvas = document.createElement('canvas');
-                tempCanvas.width = frame.width;
-                tempCanvas.height = frame.height;
-                const tempCtx = tempCanvas.getContext('2d');
-                tempCtx.putImageData(imageData, 0, 0);
-                
-                // Draw onto layer canvas (may be clipped if image is larger)
-                layer.ctx.drawImage(tempCanvas, 0, 0);
-            }
-        } else {
-            // Single frame image - create layer with the loaded image
-            const newLayer = createLayer(file.name);
-            
-            // Convert image data to ImageData
-            const imageData = new ImageData(
-                new Uint8ClampedArray(image.data),
-                image.width,
-                image.height
-            );
-            
-            // Create temporary canvas to hold the image
-            const tempCanvas = document.createElement('canvas');
-            tempCanvas.width = image.width;
-            tempCanvas.height = image.height;
-            const tempCtx = tempCanvas.getContext('2d');
-            tempCtx.putImageData(imageData, 0, 0);
-            
-            // Draw onto layer canvas (may be clipped if image is larger)
-            newLayer.ctx.drawImage(tempCanvas, 0, 0);
-        }
-        
-        composeLayers();
-        saveState();
-    } catch (error) {
-        console.error('Error importing layer:', error);
-        alert('Error importing layer. Please try a different file.');
-    }
-    
-    // Clear the input so the same file can be imported again
-    e.target.value = '';
+    FileIOModule.handleImportLayer(e, globalState, createLayer, composeLayers, saveState);
 }
 
 async function saveImage() {
-    // Show save dialog instead of immediately saving
-    const modal = document.getElementById('saveModal');
-    modal.classList.add('active');
+    FileIOModule.saveImage();
 }
 
 async function applySaveImage() {
-    try {
-        const format = document.getElementById('saveFormat').value;
-        const quality = parseInt(document.getElementById('saveQuality').value);
-        const multiFrame = document.getElementById('saveMultiFrame').checked;
-        const filename = document.getElementById('saveFilename').value || 'crimshop-export';
-        
-        let fileData;
-        let mimeType;
-        let extension;
-        
-        if (multiFrame && MULTI_FRAME_FORMATS.includes(format)) {
-            // Multi-frame export
-            const frames = [];
-            
-            for (const layer of state.layers) {
-                if (!layer.visible) continue;
-                
-                // Create a temporary canvas to render this layer
-                const tempCanvas = document.createElement('canvas');
-                tempCanvas.width = state.canvas.width;
-                tempCanvas.height = state.canvas.height;
-                const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
-                
-                // Draw the layer
-                tempCtx.globalAlpha = layer.opacity;
-                tempCtx.drawImage(layer.canvas, 0, 0);
-                tempCtx.globalAlpha = 1.0;
-                
-                const imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
-                
-                frames.push({
-                    width: tempCanvas.width,
-                    height: tempCanvas.height,
-                    data: new Uint8Array(imageData.data),
-                    frameMetadata: {
-                        delay: layer.duration
-                    }
-                });
-            }
-            
-            // Create MultiFrameImageData object
-            const multiFrameImageData = {
-                width: state.canvas.width,
-                height: state.canvas.height,
-                frames: frames,
-                metadata: hasMetadata(state.metadata) ? cleanMetadataForExport(state.metadata) : undefined
-            };
-            
-            // Encode based on format using Image.encodeFrames
-            if (format === 'gif') {
-                fileData = await Image.encodeFrames('gif', multiFrameImageData);
-                mimeType = 'image/gif';
-                extension = 'gif';
-            } else if (format === 'apng') {
-                fileData = await Image.encodeFrames('apng', multiFrameImageData);
-                mimeType = 'image/apng';
-                extension = 'apng';
-            } else if (format === 'tiff') {
-                fileData = await Image.encodeFrames('tiff', multiFrameImageData);
-                mimeType = 'image/tiff';
-                extension = 'tiff';
-            }
-        } else {
-            // Single frame export - compose all layers
-            const imageData = state.ctx.getImageData(0, 0, state.canvas.width, state.canvas.height);
-            
-            // Create Image instance from canvas data
-            const image = Image.fromRGBA(
-                state.canvas.width,
-                state.canvas.height,
-                new Uint8Array(imageData.data)
-            );
-            
-            // Apply metadata if available using setMetadata method
-            if (hasMetadata(state.metadata)) {
-                // Clean metadata - remove null/undefined/empty values
-                const cleanMetadata = cleanMetadataForExport(state.metadata);
-                image.setMetadata(cleanMetadata, false);
-            }
-            
-            // Save in selected format
-            switch (format) {
-                case 'png':
-                    fileData = await image.save('png');
-                    mimeType = 'image/png';
-                    extension = 'png';
-                    break;
-                case 'jpeg':
-                    fileData = await image.save('jpeg', { quality: quality / 100 });
-                    mimeType = 'image/jpeg';
-                    extension = 'jpg';
-                    break;
-                case 'webp':
-                    fileData = await image.save('webp', { quality: quality / 100 });
-                    mimeType = 'image/webp';
-                    extension = 'webp';
-                    break;
-                case 'gif':
-                    fileData = await image.save('gif');
-                    mimeType = 'image/gif';
-                    extension = 'gif';
-                    break;
-                case 'apng':
-                    fileData = await image.save('apng');
-                    mimeType = 'image/apng';
-                    extension = 'apng';
-                    break;
-                case 'tiff':
-                    fileData = await image.save('tiff');
-                    mimeType = 'image/tiff';
-                    extension = 'tiff';
-                    break;
-                case 'bmp':
-                    fileData = await image.save('bmp');
-                    mimeType = 'image/bmp';
-                    extension = 'bmp';
-                    break;
-                default:
-                    fileData = await image.save('png');
-                    mimeType = 'image/png';
-                    extension = 'png';
-            }
-        }
-        
-        // Create download link
-        const blob = new Blob([fileData], { type: mimeType });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `${filename}.${extension}`;
-        a.click();
-        URL.revokeObjectURL(url);
-        
-        closeModal('saveModal');
-    } catch (error) {
-        console.error('Error saving image:', error);
-        alert('Error saving image: ' + error.message);
-    }
+    FileIOModule.applySaveImage(state, hasMetadata, cleanMetadataForExport, closeModal);
 }
 
 function createNewImage() {
@@ -857,244 +386,42 @@ function applyNewImage() {
     closeModal('newImageModal');
 }
 
-// Transform Operations
+// Transform Operations - using modules
 async function resizeLayer() {
-    const layer = state.layers[state.activeLayerIndex];
-    document.getElementById('resizeWidth').value = layer.canvas.width;
-    document.getElementById('resizeHeight').value = layer.canvas.height;
-    
-    const modal = document.getElementById('resizeModal');
-    modal.classList.add('active');
+    EffectsModule.resizeLayer(state);
 }
 
 async function applyResize() {
-    const width = parseInt(document.getElementById('resizeWidth').value);
-    const height = parseInt(document.getElementById('resizeHeight').value);
-    
-    if (width > 0 && height > 0) {
-        const layer = state.layers[state.activeLayerIndex];
-        
-        try {
-            // Get current layer data
-            const imageData = layer.ctx.getImageData(0, 0, layer.canvas.width, layer.canvas.height);
-            
-            // Create Image instance
-            const image = Image.fromRGBA(
-                layer.canvas.width,
-                layer.canvas.height,
-                new Uint8Array(imageData.data)
-            );
-            
-            // Resize using cross-image
-            image.resize({ width, height });
-            
-            // Update layer canvas
-            layer.canvas.width = width;
-            layer.canvas.height = height;
-            
-            const resizedImageData = new ImageData(
-                new Uint8ClampedArray(image.data),
-                width,
-                height
-            );
-            layer.ctx.putImageData(resizedImageData, 0, 0);
-            
-            composeLayers();
-            saveState();
-        } catch (error) {
-            console.error('Error resizing:', error);
-            alert('Error resizing layer: ' + error.message);
-        }
-    }
-    
-    closeModal('resizeModal');
+    EffectsModule.applyResize(state, composeLayers, saveState, closeModal);
 }
 
 function rotateLayer() {
-    const layer = state.layers[state.activeLayerIndex];
-    
-    // Create temporary canvas for rotation
-    const tempCanvas = document.createElement('canvas');
-    tempCanvas.width = layer.canvas.height;
-    tempCanvas.height = layer.canvas.width;
-    const tempCtx = tempCanvas.getContext('2d');
-    
-    // Rotate 90 degrees clockwise
-    tempCtx.translate(tempCanvas.width / 2, tempCanvas.height / 2);
-    tempCtx.rotate(Math.PI / 2);
-    tempCtx.drawImage(layer.canvas, -layer.canvas.width / 2, -layer.canvas.height / 2);
-    
-    // Update layer canvas
-    layer.canvas.width = tempCanvas.width;
-    layer.canvas.height = tempCanvas.height;
-    layer.ctx.clearRect(0, 0, layer.canvas.width, layer.canvas.height);
-    layer.ctx.drawImage(tempCanvas, 0, 0);
-    
-    composeLayers();
-    saveState();
+    EffectsModule.rotateLayer(state, composeLayers, saveState);
 }
 
 function flipLayerHorizontal() {
-    const layer = state.layers[state.activeLayerIndex];
-    
-    const tempCanvas = document.createElement('canvas');
-    tempCanvas.width = layer.canvas.width;
-    tempCanvas.height = layer.canvas.height;
-    const tempCtx = tempCanvas.getContext('2d');
-    
-    tempCtx.translate(tempCanvas.width, 0);
-    tempCtx.scale(-1, 1);
-    tempCtx.drawImage(layer.canvas, 0, 0);
-    
-    layer.ctx.clearRect(0, 0, layer.canvas.width, layer.canvas.height);
-    layer.ctx.drawImage(tempCanvas, 0, 0);
-    
-    composeLayers();
-    saveState();
+    EffectsModule.flipLayerHorizontal(state, composeLayers, saveState);
 }
 
 function flipLayerVertical() {
-    const layer = state.layers[state.activeLayerIndex];
-    
-    const tempCanvas = document.createElement('canvas');
-    tempCanvas.width = layer.canvas.width;
-    tempCanvas.height = layer.canvas.height;
-    const tempCtx = tempCanvas.getContext('2d');
-    
-    tempCtx.translate(0, tempCanvas.height);
-    tempCtx.scale(1, -1);
-    tempCtx.drawImage(layer.canvas, 0, 0);
-    
-    layer.ctx.clearRect(0, 0, layer.canvas.width, layer.canvas.height);
-    layer.ctx.drawImage(tempCanvas, 0, 0);
-    
-    composeLayers();
-    saveState();
+    EffectsModule.flipLayerVertical(state, composeLayers, saveState);
 }
 
-// Effects
+// Effects - using modules
 function applyGrayscale() {
-    const layer = state.layers[state.activeLayerIndex];
-    const imageData = layer.ctx.getImageData(0, 0, layer.canvas.width, layer.canvas.height);
-    const data = imageData.data;
-    
-    for (let i = 0; i < data.length; i += 4) {
-        const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
-        data[i] = avg;
-        data[i + 1] = avg;
-        data[i + 2] = avg;
-    }
-    
-    layer.ctx.putImageData(imageData, 0, 0);
-    composeLayers();
-    saveState();
+    EffectsModule.applyGrayscale(state, composeLayers, saveState);
 }
 
 function applyInvert() {
-    const layer = state.layers[state.activeLayerIndex];
-    const imageData = layer.ctx.getImageData(0, 0, layer.canvas.width, layer.canvas.height);
-    const data = imageData.data;
-    
-    for (let i = 0; i < data.length; i += 4) {
-        data[i] = 255 - data[i];
-        data[i + 1] = 255 - data[i + 1];
-        data[i + 2] = 255 - data[i + 2];
-    }
-    
-    layer.ctx.putImageData(imageData, 0, 0);
-    composeLayers();
-    saveState();
+    EffectsModule.applyInvert(state, composeLayers, saveState);
 }
 
 function showEffectModal(effectName, effectFunction) {
-    const modal = document.getElementById('effectModal');
-    const title = document.getElementById('effectTitle');
-    const slider = document.getElementById('effectSlider');
-    const valueDisplay = document.getElementById('effectValue');
-    
-    title.textContent = effectName;
-    slider.value = 50;
-    valueDisplay.textContent = '50';
-    
-    modal.classList.add('active');
-    
-    // Store effect function for apply button
-    modal.dataset.effectFunction = effectFunction;
+    EffectsModule.showEffectModal(effectName, effectFunction);
 }
 
 function applyEffect() {
-    const modal = document.getElementById('effectModal');
-    const slider = document.getElementById('effectSlider');
-    const value = parseInt(slider.value);
-    const effectName = modal.dataset.effectFunction;
-    
-    const layer = state.layers[state.activeLayerIndex];
-    const imageData = layer.ctx.getImageData(0, 0, layer.canvas.width, layer.canvas.height);
-    const data = imageData.data;
-    
-    switch (effectName) {
-        case 'brightness':
-            const brightnessFactor = (value - 50) * 2.55;
-            for (let i = 0; i < data.length; i += 4) {
-                data[i] = Math.max(0, Math.min(255, data[i] + brightnessFactor));
-                data[i + 1] = Math.max(0, Math.min(255, data[i + 1] + brightnessFactor));
-                data[i + 2] = Math.max(0, Math.min(255, data[i + 2] + brightnessFactor));
-            }
-            break;
-            
-        case 'contrast':
-            const contrastFactor = (value / 50);
-            for (let i = 0; i < data.length; i += 4) {
-                data[i] = Math.max(0, Math.min(255, ((data[i] - 128) * contrastFactor) + 128));
-                data[i + 1] = Math.max(0, Math.min(255, ((data[i + 1] - 128) * contrastFactor) + 128));
-                data[i + 2] = Math.max(0, Math.min(255, ((data[i + 2] - 128) * contrastFactor) + 128));
-            }
-            break;
-            
-        case 'blur':
-            // Simple box blur
-            applyBoxBlur(imageData, Math.floor(value / 10) + 1);
-            break;
-    }
-    
-    layer.ctx.putImageData(imageData, 0, 0);
-    composeLayers();
-    saveState();
-    
-    closeModal('effectModal');
-}
-
-function applyBoxBlur(imageData, radius) {
-    const width = imageData.width;
-    const height = imageData.height;
-    const data = imageData.data;
-    const tempData = new Uint8ClampedArray(data);
-    
-    for (let y = 0; y < height; y++) {
-        for (let x = 0; x < width; x++) {
-            let r = 0, g = 0, b = 0, count = 0;
-            
-            for (let ky = -radius; ky <= radius; ky++) {
-                for (let kx = -radius; kx <= radius; kx++) {
-                    const px = x + kx;
-                    const py = y + ky;
-                    
-                    if (px >= 0 && px < width && py >= 0 && py < height) {
-                        const idx = (py * width + px) * 4;
-                        r += tempData[idx];
-                        g += tempData[idx + 1];
-                        b += tempData[idx + 2];
-                        count++;
-                    }
-                }
-            }
-            
-            const idx = (y * width + x) * 4;
-            data[idx] = r / count;
-            data[idx + 1] = g / count;
-            data[idx + 2] = b / count;
-        }
-    }
+    EffectsModule.applyEffect(state, composeLayers, saveState, closeModal);
 }
 
 // History (Undo/Redo) - using modules
