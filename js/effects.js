@@ -53,66 +53,107 @@ export async function applyResize(state, composeLayers, saveState, closeModal) {
     closeModal('resizeModal');
 }
 
-export function rotateLayer(state, composeLayers, saveState) {
+export async function rotateLayer(state, composeLayers, saveState) {
     const layer = state.layers[state.activeLayerIndex];
     
-    // Create temporary canvas for rotation
-    const tempCanvas = document.createElement('canvas');
-    tempCanvas.width = layer.canvas.height;
-    tempCanvas.height = layer.canvas.width;
-    const tempCtx = tempCanvas.getContext('2d');
-    
-    // Rotate 90 degrees clockwise
-    tempCtx.translate(tempCanvas.width / 2, tempCanvas.height / 2);
-    tempCtx.rotate(Math.PI / 2);
-    tempCtx.drawImage(layer.canvas, -layer.canvas.width / 2, -layer.canvas.height / 2);
-    
-    // Update layer canvas
-    layer.canvas.width = tempCanvas.width;
-    layer.canvas.height = tempCanvas.height;
-    layer.ctx.clearRect(0, 0, layer.canvas.width, layer.canvas.height);
-    layer.ctx.drawImage(tempCanvas, 0, 0);
-    
-    composeLayers();
-    saveState();
+    try {
+        // Get current layer data
+        const imageData = layer.ctx.getImageData(0, 0, layer.canvas.width, layer.canvas.height);
+        
+        // Create Image instance
+        const image = Image.fromRGBA(
+            layer.canvas.width,
+            layer.canvas.height,
+            new Uint8Array(imageData.data)
+        );
+        
+        // Use cross-image's built-in rotate90 method
+        image.rotate90();
+        
+        // Update layer canvas dimensions (width and height swap for 90° rotation)
+        layer.canvas.width = image.width;
+        layer.canvas.height = image.height;
+        
+        // Put rotated image data back
+        const rotatedImageData = new ImageData(
+            new Uint8ClampedArray(image.data),
+            image.width,
+            image.height
+        );
+        layer.ctx.putImageData(rotatedImageData, 0, 0);
+        
+        composeLayers();
+        saveState();
+    } catch (error) {
+        console.error('Error rotating layer:', error);
+        alert('Error rotating layer: ' + error.message);
+    }
 }
 
-export function flipLayerHorizontal(state, composeLayers, saveState) {
+export async function flipLayerHorizontal(state, composeLayers, saveState) {
     const layer = state.layers[state.activeLayerIndex];
     
-    const tempCanvas = document.createElement('canvas');
-    tempCanvas.width = layer.canvas.width;
-    tempCanvas.height = layer.canvas.height;
-    const tempCtx = tempCanvas.getContext('2d');
-    
-    tempCtx.translate(tempCanvas.width, 0);
-    tempCtx.scale(-1, 1);
-    tempCtx.drawImage(layer.canvas, 0, 0);
-    
-    layer.ctx.clearRect(0, 0, layer.canvas.width, layer.canvas.height);
-    layer.ctx.drawImage(tempCanvas, 0, 0);
-    
-    composeLayers();
-    saveState();
+    try {
+        // Get current layer data
+        const imageData = layer.ctx.getImageData(0, 0, layer.canvas.width, layer.canvas.height);
+        
+        // Create Image instance
+        const image = Image.fromRGBA(
+            layer.canvas.width,
+            layer.canvas.height,
+            new Uint8Array(imageData.data)
+        );
+        
+        // Use cross-image's built-in flipHorizontal method
+        image.flipHorizontal();
+        
+        // Put flipped image data back
+        const flippedImageData = new ImageData(
+            new Uint8ClampedArray(image.data),
+            image.width,
+            image.height
+        );
+        layer.ctx.putImageData(flippedImageData, 0, 0);
+        
+        composeLayers();
+        saveState();
+    } catch (error) {
+        console.error('Error flipping layer horizontally:', error);
+        alert('Error flipping layer horizontally: ' + error.message);
+    }
 }
 
-export function flipLayerVertical(state, composeLayers, saveState) {
+export async function flipLayerVertical(state, composeLayers, saveState) {
     const layer = state.layers[state.activeLayerIndex];
     
-    const tempCanvas = document.createElement('canvas');
-    tempCanvas.width = layer.canvas.width;
-    tempCanvas.height = layer.canvas.height;
-    const tempCtx = tempCanvas.getContext('2d');
-    
-    tempCtx.translate(0, tempCanvas.height);
-    tempCtx.scale(1, -1);
-    tempCtx.drawImage(layer.canvas, 0, 0);
-    
-    layer.ctx.clearRect(0, 0, layer.canvas.width, layer.canvas.height);
-    layer.ctx.drawImage(tempCanvas, 0, 0);
-    
-    composeLayers();
-    saveState();
+    try {
+        // Get current layer data
+        const imageData = layer.ctx.getImageData(0, 0, layer.canvas.width, layer.canvas.height);
+        
+        // Create Image instance
+        const image = Image.fromRGBA(
+            layer.canvas.width,
+            layer.canvas.height,
+            new Uint8Array(imageData.data)
+        );
+        
+        // Use cross-image's built-in flipVertical method
+        image.flipVertical();
+        
+        // Put flipped image data back
+        const flippedImageData = new ImageData(
+            new Uint8ClampedArray(image.data),
+            image.width,
+            image.height
+        );
+        layer.ctx.putImageData(flippedImageData, 0, 0);
+        
+        composeLayers();
+        saveState();
+    } catch (error) {
+        console.error('Error flipping layer vertically:', error);
+        alert('Error flipping layer vertically: ' + error.message);
+    }
 }
 
 export function applyGrayscale(state, composeLayers, saveState) {

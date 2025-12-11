@@ -102,6 +102,12 @@
                         <span class="panel-toggle">▼</span>
                     </h3>
                     <div class="panel-content" id="toolOptionsPanel">
+                        <div class="tool-options-group" id="brushOptions" style="display: none;">
+                            <label>Size: <span id="brushSizeValue">10</span>px</label>
+                            <input type="range" id="brushSize" min="1" max="100" value="10">
+                            <label>Opacity: <span id="opacityValue">100</span>%</label>
+                            <input type="range" id="opacity" min="0" max="100" value="100">
+                        </div>
                         <div class="tool-options-group" id="selectionOptions" style="display: none;">
                             <button class="tool-btn" id="selectAllBtn" title="Select All (Ctrl+A)">
                                 <span>📋</span>
@@ -135,21 +141,6 @@
                             <input type="color" id="foregroundColor" value="#000000">
                             <label>Background:</label>
                             <input type="color" id="backgroundColor" value="#FFFFFF">
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="panel-section">
-                    <h3 class="panel-header" data-panel="brushSettings">
-                        <span class="panel-title">Brush Settings</span>
-                        <span class="panel-toggle">▼</span>
-                    </h3>
-                    <div class="panel-content" id="brushSettingsPanel">
-                        <div class="settings-group">
-                            <label>Size: <span id="brushSizeValue">10</span>px</label>
-                            <input type="range" id="brushSize" min="1" max="100" value="10">
-                            <label>Opacity: <span id="opacityValue">100</span>%</label>
-                            <input type="range" id="opacity" min="0" max="100" value="100">
                         </div>
                     </div>
                 </div>
@@ -321,6 +312,8 @@
                     <option value="apng">APNG (Animated PNG)</option>
                     <option value="tiff">TIFF</option>
                     <option value="bmp">BMP</option>
+                    <option value="heic">HEIC</option>
+                    <option value="avif">AVIF</option>
                 </select>
             </label>
             <label id="qualityLabel" style="display: none;">Quality: <span id="qualityValue">90</span>

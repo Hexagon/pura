@@ -2,6 +2,7 @@
 
 // Import selection functions
 import * as Selection from './selection.js';
+import { ensureLayerSize } from './layers.js';
 
 export function getMousePos(state, e) {
     const rect = state.canvas.getBoundingClientRect();
@@ -85,6 +86,11 @@ export function startDrawing(state, e, composeLayers) {
     state.isDrawing = true;
     
     const layer = state.layers[state.activeLayerIndex];
+    
+    // Ensure layer is at least as large as the workspace for drawing/filling operations
+    if (['brush', 'eraser', 'fill'].includes(state.tool)) {
+        ensureLayerSize(state, state.activeLayerIndex);
+    }
     
     if (state.tool === 'fill') {
         // Perform flood fill immediately
@@ -382,16 +388,111 @@ export function stopDrawing(state, e, composeLayers, saveState) {
             break;
             
         case 'move':
-            // Apply the move to the layer
-            if (state.moveOffsetX !== 0 || state.moveOffsetY !== 0) {
+            // Apply the move to the layer or selection
+            if (state.selection) {
+                // Move only the selection
+                if (state.moveOffsetX !== 0 || state.moveOffsetY !== 0) {
+                    const newX = state.selection.x + state.moveOffsetX;
+                    const newY = state.selection.y + state.moveOffsetY;
+                    
+                    // Expand layer if selection will be placed outside current bounds
+                    const requiredWidth = Math.max(
+                        layer.canvas.width,
+                        newX + state.selection.width,
+                        newX < 0 ? layer.canvas.width + Math.abs(newX) : 0
+                    );
+                    const requiredHeight = Math.max(
+                        layer.canvas.height,
+                        newY + state.selection.height,
+                        newY < 0 ? layer.canvas.height + Math.abs(newY) : 0
+                    );
+                    
+                    let shiftX = 0;
+                    let shiftY = 0;
+                    
+                    if (requiredWidth > layer.canvas.width || requiredHeight > layer.canvas.height || newX < 0 || newY < 0) {
+                        // Save current layer content
+                        const tempCanvas = document.createElement('canvas');
+                        tempCanvas.width = layer.canvas.width;
+                        tempCanvas.height = layer.canvas.height;
+                        const tempCtx = tempCanvas.getContext('2d');
+                        tempCtx.drawImage(layer.canvas, 0, 0);
+                        
+                        // Calculate shift needed if moving into negative coords
+                        shiftX = newX < 0 ? Math.abs(newX) : 0;
+                        shiftY = newY < 0 ? Math.abs(newY) : 0;
+                        
+                        // Resize layer
+                        layer.canvas.width = requiredWidth;
+                        layer.canvas.height = requiredHeight;
+                        
+                        // Restore content with shift
+                        layer.ctx.clearRect(0, 0, layer.canvas.width, layer.canvas.height);
+                        layer.ctx.drawImage(tempCanvas, shiftX, shiftY);
+                        
+                        // Adjust selection coordinates for the shift
+                        state.selection.x += shiftX;
+                        state.selection.y += shiftY;
+                    }
+                    
+                    // Clear the original selection area
+                    if (state.selectionType === 'rect') {
+                        layer.ctx.clearRect(state.selection.x, state.selection.y, state.selection.width, state.selection.height);
+                    } else if (state.selectionType === 'freeform' && state.selectionPath) {
+                        // Clear freeform selection area
+                        layer.ctx.save();
+                        layer.ctx.beginPath();
+                        layer.ctx.moveTo(state.selectionPath[0].x + shiftX, state.selectionPath[0].y + shiftY);
+                        for (let i = 1; i < state.selectionPath.length; i++) {
+                            layer.ctx.lineTo(state.selectionPath[i].x + shiftX, state.selectionPath[i].y + shiftY);
+                        }
+                        layer.ctx.closePath();
+                        layer.ctx.clip();
+                        layer.ctx.clearRect(state.selection.x, state.selection.y, state.selection.width, state.selection.height);
+                        layer.ctx.restore();
+                    }
+                    
+                    // Put the selection at new location (adjusted for any shift)
+                    const finalX = newX + shiftX;
+                    const finalY = newY + shiftY;
+                    layer.ctx.putImageData(state.selection.imageData, finalX, finalY);
+                    
+                    // Update selection position
+                    state.selection.x = finalX;
+                    state.selection.y = finalY;
+                    
+                    // Clear selection path if it exists
+                    state.selectionPath = null;
+                }
+            } else if (state.moveOffsetX !== 0 || state.moveOffsetY !== 0) {
+                // Move the entire layer - expand canvas if necessary
+                const offsetX = state.moveOffsetX;
+                const offsetY = state.moveOffsetY;
+                
+                // Save current layer content
                 const tempCanvas = document.createElement('canvas');
                 tempCanvas.width = layer.canvas.width;
                 tempCanvas.height = layer.canvas.height;
                 const tempCtx = tempCanvas.getContext('2d');
                 tempCtx.drawImage(layer.canvas, 0, 0);
                 
+                // Calculate shift needed if moving into negative coords
+                const shiftX = offsetX < 0 ? Math.abs(offsetX) : 0;
+                const shiftY = offsetY < 0 ? Math.abs(offsetY) : 0;
+                
+                // Calculate new canvas size to accommodate shifted content
+                const newWidth = layer.canvas.width + shiftX + Math.max(0, offsetX);
+                const newHeight = layer.canvas.height + shiftY + Math.max(0, offsetY);
+                
+                // Resize layer canvas if needed
+                if (newWidth !== layer.canvas.width || newHeight !== layer.canvas.height) {
+                    layer.canvas.width = newWidth;
+                    layer.canvas.height = newHeight;
+                }
+                
+                // Clear and redraw at new position
                 layer.ctx.clearRect(0, 0, layer.canvas.width, layer.canvas.height);
-                layer.ctx.drawImage(tempCanvas, state.moveOffsetX, state.moveOffsetY);
+                layer.ctx.drawImage(tempCanvas, offsetX + shiftX, offsetY + shiftY);
             }
             break;
             

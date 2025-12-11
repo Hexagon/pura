@@ -316,6 +316,16 @@ export async function applySaveImage(state, hasMetadata, cleanMetadataForExport,
                     mimeType = 'image/bmp';
                     extension = 'bmp';
                     break;
+                case 'heic':
+                    fileData = await image.save('heic', { quality: quality / 100 });
+                    mimeType = 'image/heic';
+                    extension = 'heic';
+                    break;
+                case 'avif':
+                    fileData = await image.save('avif', { quality: quality / 100 });
+                    mimeType = 'image/avif';
+                    extension = 'avif';
+                    break;
                 default:
                     fileData = await image.save('png');
                     mimeType = 'image/png';

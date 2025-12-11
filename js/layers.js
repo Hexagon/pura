@@ -102,3 +102,31 @@ export function composeLayers(state) {
     
     state.ctx.globalAlpha = 1.0;
 }
+
+// Ensure layer is at least as large as the workspace canvas
+export function ensureLayerSize(state, layerIndex) {
+    const layer = state.layers[layerIndex];
+    const workspaceWidth = state.canvas.width;
+    const workspaceHeight = state.canvas.height;
+    
+    // Check if layer needs to be expanded
+    if (layer.canvas.width < workspaceWidth || layer.canvas.height < workspaceHeight) {
+        const newWidth = Math.max(layer.canvas.width, workspaceWidth);
+        const newHeight = Math.max(layer.canvas.height, workspaceHeight);
+        
+        // Create temp canvas with current content
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = layer.canvas.width;
+        tempCanvas.height = layer.canvas.height;
+        const tempCtx = tempCanvas.getContext('2d');
+        tempCtx.drawImage(layer.canvas, 0, 0);
+        
+        // Resize layer canvas
+        layer.canvas.width = newWidth;
+        layer.canvas.height = newHeight;
+        
+        // Redraw content
+        layer.ctx.clearRect(0, 0, newWidth, newHeight);
+        layer.ctx.drawImage(tempCanvas, 0, 0);
+    }
+}
