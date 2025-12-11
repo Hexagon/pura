@@ -119,7 +119,7 @@ export async function flipLayerHorizontal(state, composeLayers, saveState) {
         saveState();
     } catch (error) {
         console.error('Error flipping layer horizontally:', error);
-        alert('Error flipping layer: ' + error.message);
+        alert('Error flipping layer horizontally: ' + error.message);
     }
 }
 
@@ -152,7 +152,7 @@ export async function flipLayerVertical(state, composeLayers, saveState) {
         saveState();
     } catch (error) {
         console.error('Error flipping layer vertically:', error);
-        alert('Error flipping layer: ' + error.message);
+        alert('Error flipping layer vertically: ' + error.message);
     }
 }
 
