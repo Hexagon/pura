@@ -5,9 +5,10 @@ import * as Selection from './selection.js';
 
 export function getMousePos(state, e) {
     const rect = state.canvas.getBoundingClientRect();
+    const zoom = state.zoom || 1.0;
     return {
-        x: (e.clientX - rect.left) * (state.canvas.width / rect.width),
-        y: (e.clientY - rect.top) * (state.canvas.height / rect.height)
+        x: (e.clientX - rect.left) / zoom,
+        y: (e.clientY - rect.top) / zoom
     };
 }
 
@@ -115,6 +116,11 @@ export function startDrawing(state, e, composeLayers) {
     
     if (state.tool === 'gradient') {
         // Just store start position, will draw on mouse up
+        return;
+    }
+    
+    if (state.tool === 'text') {
+        // Text tool will open a modal for text input
         return;
     }
     
@@ -512,4 +518,33 @@ export function stopDrawing(state, e, composeLayers, saveState) {
     state.isDrawing = false;
     composeLayers();
     saveState();
+}
+
+// Render text to the active layer
+export function renderText(state, text, x, y, composeLayers, saveState) {
+    if (!state || !text || state.layers.length === 0) return;
+    
+    const layer = state.layers[state.activeLayerIndex];
+    const layerPos = toLayerCoords(layer, x, y);
+    
+    // Set font properties
+    layer.ctx.font = `${state.fontSize}px ${state.fontFamily}`;
+    layer.ctx.fillStyle = state.foregroundColor;
+    layer.ctx.textBaseline = 'top';
+    layer.ctx.globalAlpha = state.opacity;
+    
+    // Clip to layer bounds
+    layer.ctx.save();
+    layer.ctx.beginPath();
+    layer.ctx.rect(0, 0, layer.canvas.width, layer.canvas.height);
+    layer.ctx.clip();
+    
+    // Draw text
+    layer.ctx.fillText(text, layerPos.x, layerPos.y);
+    
+    layer.ctx.restore();
+    layer.ctx.globalAlpha = 1.0;
+    
+    composeLayers();
+    if (saveState) saveState();
 }

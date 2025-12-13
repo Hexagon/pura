@@ -92,6 +92,7 @@ function createWorkspace(name, width = 800, height = 600, bgColor = '#FFFFFF') {
     composeLayers();
     saveState();
     updateUI();
+    applyZoom(); // Initialize zoom display
     
     // Update tab bar
     updateTabBar();
@@ -142,6 +143,7 @@ function switchWorkspace(workspaceId) {
         updateLayersPanel();
         composeLayers();
         updateUI();
+        applyZoom(); // Apply zoom when switching workspace
         
         // Update metadata table if we have state
         if (state && state.metadata) {
@@ -333,6 +335,18 @@ function getMousePos(e) {
 }
 
 function startDrawing(e) {
+    if (!state) return;
+    
+    // For text tool, open modal instead of drawing
+    if (state.tool === 'text') {
+        const pos = DrawingModule.getMousePos(state, e);
+        state.pendingTextPosition = { x: pos.x, y: pos.y };
+        document.getElementById('textInput').value = '';
+        UIModule.showModal('textModal');
+        document.getElementById('textInput').focus();
+        return;
+    }
+    
     DrawingModule.startDrawing(state, e, composeLayers);
 }
 
@@ -456,6 +470,44 @@ function updatePreviewCanvasSize() {
     UIModule.updatePreviewCanvasSize(state);
 }
 
+// Zoom Functions
+function applyZoom() {
+    if (!state) return;
+    
+    const canvasWrapper = document.getElementById('canvasWrapper');
+    const canvas = state.canvas;
+    const previewCanvas = state.previewCanvas;
+    
+    // Apply zoom transform
+    canvas.style.transform = `scale(${state.zoom})`;
+    canvas.style.transformOrigin = 'top left';
+    if (previewCanvas) {
+        previewCanvas.style.transform = `scale(${state.zoom})`;
+        previewCanvas.style.transformOrigin = 'top left';
+    }
+    
+    // Update zoom level display
+    document.getElementById('zoomLevel').textContent = `${Math.round(state.zoom * 100)}%`;
+}
+
+function zoomIn() {
+    if (!state) return;
+    state.zoom = Math.min(state.zoomMax, state.zoom * 1.2);
+    applyZoom();
+}
+
+function zoomOut() {
+    if (!state) return;
+    state.zoom = Math.max(state.zoomMin, state.zoom / 1.2);
+    applyZoom();
+}
+
+function resetZoom() {
+    if (!state) return;
+    state.zoom = 1.0;
+    applyZoom();
+}
+
 // Selection Functions
 function selectAll() {
     if (!state) return;
@@ -485,6 +537,7 @@ function updateToolOptions() {
     const selectionOptions = document.getElementById('selectionOptions');
     const fillOptions = document.getElementById('fillOptions');
     const gradientOptions = document.getElementById('gradientOptions');
+    const textOptions = document.getElementById('textOptions');
     const isSelectionTool = ['pointer', 'rectSelect', 'freeformSelect'].includes(state.tool);
     const isBrushTool = ['brush', 'eraser'].includes(state.tool);
     
@@ -510,6 +563,12 @@ function updateToolOptions() {
         gradientOptions.style.display = 'block';
     } else {
         gradientOptions.style.display = 'none';
+    }
+    
+    if (state.tool === 'text') {
+        textOptions.style.display = 'block';
+    } else {
+        textOptions.style.display = 'none';
     }
 }
 
@@ -988,9 +1047,39 @@ function setupEventListeners() {
     document.getElementById('fileInput').addEventListener('change', handleFileUpload);
     document.getElementById('importLayerInput').addEventListener('change', handleImportLayer);
     
+    // Text tool functions
+    const openTextModal = (x, y) => {
+        state.pendingTextPosition = { x, y };
+        document.getElementById('textInput').value = '';
+        UIModule.showModal('textModal');
+        document.getElementById('textInput').focus();
+    };
+    
+    window.openTextModal = openTextModal; // Make available to canvas event handler
+    
     // Undo/Redo
     document.getElementById('undoBtn').addEventListener('click', undo);
     document.getElementById('redoBtn').addEventListener('click', redo);
+    
+    // Zoom controls
+    document.getElementById('zoomInBtn').addEventListener('click', zoomIn);
+    document.getElementById('zoomOutBtn').addEventListener('click', zoomOut);
+    document.getElementById('zoomResetBtn').addEventListener('click', resetZoom);
+    
+    // Text tool modal
+    document.getElementById('applyTextBtn').addEventListener('click', () => {
+        const text = document.getElementById('textInput').value;
+        if (text && state.pendingTextPosition) {
+            DrawingModule.renderText(state, text, state.pendingTextPosition.x, state.pendingTextPosition.y, composeLayers, saveState);
+        }
+        closeModal('textModal');
+        state.pendingTextPosition = null;
+    });
+    
+    document.getElementById('cancelTextBtn').addEventListener('click', () => {
+        closeModal('textModal');
+        state.pendingTextPosition = null;
+    });
     
     // Tools
     document.querySelectorAll('[data-tool]').forEach(btn => {
@@ -1035,6 +1124,16 @@ function setupEventListeners() {
     // Gradient tool settings
     document.getElementById('gradientType').addEventListener('change', (e) => {
         state.gradientType = e.target.value;
+    });
+    
+    // Text tool settings
+    document.getElementById('fontSize').addEventListener('input', (e) => {
+        state.fontSize = parseInt(e.target.value);
+        document.getElementById('fontSizeValue').textContent = state.fontSize;
+    });
+    
+    document.getElementById('fontFamily').addEventListener('change', (e) => {
+        state.fontFamily = e.target.value;
     });
     
     // Layer controls

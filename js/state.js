@@ -54,7 +54,14 @@ export function createWorkspaceState(canvas, ctx) {
         // Selection state
         selection: null, // {x, y, width, height, imageData}
         selectionPath: null, // For freeform selection (array of points)
-        selectionType: 'rect' // 'rect' or 'freeform'
+        selectionType: 'rect', // 'rect' or 'freeform'
+        // Zoom state
+        zoom: 1.0,
+        zoomMin: 0.1,
+        zoomMax: 10.0,
+        // Text tool state
+        fontSize: 24,
+        fontFamily: 'Arial'
     };
 }
 
