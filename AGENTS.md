@@ -168,7 +168,7 @@ The project has no test infrastructure. Manual testing only.
 - Automatic deployment via `.github/workflows/pages.yml`
 - Triggers on push to `main` branch
 - No build step - deploys static files as-is
-- URL: `https://hexagon.github.io/pura/`
+- URL: `https://puraeditor.com/`
 
 ### Local Development
 ```bash

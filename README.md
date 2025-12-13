@@ -31,7 +31,7 @@ A powerful, client-side image editor built with vanilla JavaScript and the [cros
 
 ## Live Demo
 
-Visit [https://hexagon.github.io/pura/](https://hexagon.github.io/pura/) to try it out!
+Visit [https://puraeditor.com/](https://puraeditor.com/) to try it out!
 
 ## Usage
 
