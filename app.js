@@ -1060,6 +1060,7 @@ function setupEventListeners() {
     
     // Text tool modal
     document.getElementById('applyTextBtn').addEventListener('click', () => {
+        if (!state) return;
         const text = document.getElementById('textInput').value.trim();
         if (text && state.pendingTextPosition) {
             DrawingModule.renderText(state, text, state.pendingTextPosition.x, state.pendingTextPosition.y, composeLayers, saveState);
@@ -1069,6 +1070,7 @@ function setupEventListeners() {
     });
     
     document.getElementById('cancelTextBtn').addEventListener('click', () => {
+        if (!state) return;
         closeModal('textModal');
         state.pendingTextPosition = null;
     });
