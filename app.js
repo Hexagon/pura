@@ -480,12 +480,12 @@ function applyZoom() {
     const canvas = state.canvas;
     const previewCanvas = state.previewCanvas;
     
-    // Apply zoom transform
+    // Apply zoom transform with center origin
     canvas.style.transform = `scale(${state.zoom})`;
-    canvas.style.transformOrigin = 'top left';
+    canvas.style.transformOrigin = 'center';
     if (previewCanvas) {
         previewCanvas.style.transform = `scale(${state.zoom})`;
-        previewCanvas.style.transformOrigin = 'top left';
+        previewCanvas.style.transformOrigin = 'center';
     }
     
     // Update zoom level display
