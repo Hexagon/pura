@@ -3,8 +3,15 @@
 // Import selection functions
 import * as Selection from './selection.js';
 
+// Allowed font families for text tool
+const ALLOWED_FONTS = [
+    'Arial', 'Helvetica', 'Times New Roman', 'Courier New',
+    'Georgia', 'Verdana', 'Comic Sans MS', 'Impact'
+];
+
 export function getMousePos(state, e) {
     const rect = state.canvas.getBoundingClientRect();
+    // getBoundingClientRect accounts for CSS transforms (including zoom)
     return {
         x: (e.clientX - rect.left) * (state.canvas.width / rect.width),
         y: (e.clientY - rect.top) * (state.canvas.height / rect.height)
@@ -115,6 +122,11 @@ export function startDrawing(state, e, composeLayers) {
     
     if (state.tool === 'gradient') {
         // Just store start position, will draw on mouse up
+        return;
+    }
+    
+    if (state.tool === 'text') {
+        // Text tool will open a modal for text input
         return;
     }
     
@@ -512,4 +524,41 @@ export function stopDrawing(state, e, composeLayers, saveState) {
     state.isDrawing = false;
     composeLayers();
     saveState();
+}
+
+// Render text to the active layer
+export function renderText(state, text, x, y, composeLayers, saveState) {
+    // Trim and validate text input
+    const trimmedText = text ? text.trim() : '';
+    if (!state || !trimmedText || state.layers.length === 0) return;
+    
+    const layer = state.layers[state.activeLayerIndex];
+    const layerPos = toLayerCoords(layer, x, y);
+    
+    // Validate font family against whitelist
+    const fontFamily = ALLOWED_FONTS.includes(state.fontFamily) ? state.fontFamily : 'Arial';
+    
+    // Set font properties
+    layer.ctx.font = `${state.fontSize}px ${fontFamily}`;
+    layer.ctx.fillStyle = state.foregroundColor;
+    layer.ctx.textBaseline = 'top';
+    layer.ctx.globalAlpha = state.opacity;
+    
+    // Clip to layer bounds
+    layer.ctx.save();
+    layer.ctx.beginPath();
+    layer.ctx.rect(0, 0, layer.canvas.width, layer.canvas.height);
+    layer.ctx.clip();
+    
+    // Draw text
+    layer.ctx.fillText(trimmedText, layerPos.x, layerPos.y);
+    
+    layer.ctx.restore();
+    layer.ctx.globalAlpha = 1.0;
+    
+    composeLayers();
+    // Save state after rendering text
+    if (saveState) {
+        saveState();
+    }
 }
