@@ -471,6 +471,8 @@ function updatePreviewCanvasSize() {
 }
 
 // Zoom Functions
+const ZOOM_FACTOR = 1.2; // Zoom increment/decrement multiplier
+
 function applyZoom() {
     if (!state) return;
     
@@ -492,13 +494,13 @@ function applyZoom() {
 
 function zoomIn() {
     if (!state) return;
-    state.zoom = Math.min(state.zoomMax, state.zoom * 1.2);
+    state.zoom = Math.min(state.zoomMax, state.zoom * ZOOM_FACTOR);
     applyZoom();
 }
 
 function zoomOut() {
     if (!state) return;
-    state.zoom = Math.max(state.zoomMin, state.zoom / 1.2);
+    state.zoom = Math.max(state.zoomMin, state.zoom / ZOOM_FACTOR);
     applyZoom();
 }
 
@@ -1058,7 +1060,7 @@ function setupEventListeners() {
     
     // Text tool modal
     document.getElementById('applyTextBtn').addEventListener('click', () => {
-        const text = document.getElementById('textInput').value;
+        const text = document.getElementById('textInput').value.trim();
         if (text && state.pendingTextPosition) {
             DrawingModule.renderText(state, text, state.pendingTextPosition.x, state.pendingTextPosition.y, composeLayers, saveState);
         }

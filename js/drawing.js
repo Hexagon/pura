@@ -527,8 +527,17 @@ export function renderText(state, text, x, y, composeLayers, saveState) {
     const layer = state.layers[state.activeLayerIndex];
     const layerPos = toLayerCoords(layer, x, y);
     
+    // Whitelist of allowed font families
+    const allowedFonts = [
+        'Arial', 'Helvetica', 'Times New Roman', 'Courier New',
+        'Georgia', 'Verdana', 'Comic Sans MS', 'Impact'
+    ];
+    
+    // Validate font family
+    const fontFamily = allowedFonts.includes(state.fontFamily) ? state.fontFamily : 'Arial';
+    
     // Set font properties
-    layer.ctx.font = `${state.fontSize}px ${state.fontFamily}`;
+    layer.ctx.font = `${state.fontSize}px ${fontFamily}`;
     layer.ctx.fillStyle = state.foregroundColor;
     layer.ctx.textBaseline = 'top';
     layer.ctx.globalAlpha = state.opacity;
