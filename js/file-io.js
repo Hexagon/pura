@@ -198,17 +198,31 @@ export async function saveImage() {
     modal.classList.add('active');
 }
 
+function buildTiffOptions() {
+    const tiffCompression = document.getElementById('tiffCompression').value;
+    const tiffGrayscale = document.getElementById('tiffGrayscale').checked;
+    const tiffRGB = document.getElementById('tiffRGB').checked;
+    
+    const tiffOptions = {};
+    if (tiffCompression && tiffCompression !== 'none') {
+        tiffOptions.compression = tiffCompression;
+    }
+    // grayscale takes precedence over rgb if both are checked
+    if (tiffGrayscale) {
+        tiffOptions.grayscale = true;
+    } else if (tiffRGB) {
+        tiffOptions.rgb = true;
+    }
+    
+    return tiffOptions;
+}
+
 export async function applySaveImage(state, hasMetadata, cleanMetadataForExport, closeModal) {
     try {
         const format = document.getElementById('saveFormat').value;
         const quality = parseInt(document.getElementById('saveQuality').value);
         const multiFrame = document.getElementById('saveMultiFrame').checked;
         const filename = document.getElementById('saveFilename').value || 'pura-export';
-        
-        // Get TIFF options
-        const tiffCompression = document.getElementById('tiffCompression').value;
-        const tiffGrayscale = document.getElementById('tiffGrayscale').checked;
-        const tiffRGB = document.getElementById('tiffRGB').checked;
         
         let fileData;
         let mimeType;
@@ -262,18 +276,7 @@ export async function applySaveImage(state, hasMetadata, cleanMetadataForExport,
                 mimeType = 'image/apng';
                 extension = 'apng';
             } else if (format === 'tiff') {
-                // Build TIFF options
-                const tiffOptions = {};
-                if (tiffCompression && tiffCompression !== 'none') {
-                    tiffOptions.compression = tiffCompression;
-                }
-                if (tiffGrayscale) {
-                    tiffOptions.grayscale = true;
-                }
-                if (tiffRGB) {
-                    tiffOptions.rgb = true;
-                }
-                
+                const tiffOptions = buildTiffOptions();
                 fileData = await Image.encodeFrames('tiff', multiFrameImageData, tiffOptions);
                 mimeType = 'image/tiff';
                 extension = 'tiff';
@@ -324,18 +327,7 @@ export async function applySaveImage(state, hasMetadata, cleanMetadataForExport,
                     extension = 'apng';
                     break;
                 case 'tiff':
-                    // Build TIFF options
-                    const tiffOptions = {};
-                    if (tiffCompression && tiffCompression !== 'none') {
-                        tiffOptions.compression = tiffCompression;
-                    }
-                    if (tiffGrayscale) {
-                        tiffOptions.grayscale = true;
-                    }
-                    if (tiffRGB) {
-                        tiffOptions.rgb = true;
-                    }
-                    
+                    const tiffOptions = buildTiffOptions();
                     fileData = await image.save('tiff', tiffOptions);
                     mimeType = 'image/tiff';
                     extension = 'tiff';
