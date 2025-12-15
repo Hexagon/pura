@@ -53,7 +53,7 @@ Visit [https://puraeditor.com/](https://puraeditor.com/) to try it out!
 
 - Pure vanilla JavaScript (no frameworks)
 - ES6 modules for clean code organization
-- [cross-image@0.2.2](https://github.com/cross-org/image) for image processing
+- [cross-image@0.4.0](https://github.com/cross-org/image) for image processing
 - HTML5 Canvas API for rendering
 - CSS3 for modern UI styling
 

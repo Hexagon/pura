@@ -87,8 +87,8 @@ app.js (main - 1091 lines)
 ## Dependencies
 
 ### External Libraries
-- **cross-image@0.2.2**: Image processing (resize, format conversion)
-  - Load from: `https://cdn.jsdelivr.net/npm/cross-image@0.2.2/esm/mod.js`
+- **cross-image@0.4.0**: Image processing (resize, format conversion)
+  - Load from: `https://cdn.jsdelivr.net/npm/cross-image@0.4.0/esm/mod.js`
   - Trust CDN availability - no vendor fallbacks
   - Use for: resize operations, image I/O (PNG/JPEG/WebP/GIF/APNG/TIFF/BMP)
   - Supports multi-frame images (animated GIF, APNG, multi-page TIFF)
