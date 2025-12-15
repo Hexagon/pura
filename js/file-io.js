@@ -198,6 +198,25 @@ export async function saveImage() {
     modal.classList.add('active');
 }
 
+function buildTiffOptions() {
+    const tiffCompression = document.getElementById('tiffCompression').value;
+    const tiffGrayscale = document.getElementById('tiffGrayscale').checked;
+    const tiffRGB = document.getElementById('tiffRGB').checked;
+    
+    const tiffOptions = {};
+    if (tiffCompression && tiffCompression !== 'none') {
+        tiffOptions.compression = tiffCompression;
+    }
+    // Grayscale takes precedence over RGB if both are checked
+    if (tiffGrayscale) {
+        tiffOptions.grayscale = true;
+    } else if (tiffRGB) {
+        tiffOptions.rgb = true;
+    }
+    
+    return tiffOptions;
+}
+
 export async function applySaveImage(state, hasMetadata, cleanMetadataForExport, closeModal) {
     try {
         const format = document.getElementById('saveFormat').value;
@@ -257,7 +276,8 @@ export async function applySaveImage(state, hasMetadata, cleanMetadataForExport,
                 mimeType = 'image/apng';
                 extension = 'apng';
             } else if (format === 'tiff') {
-                fileData = await Image.encodeFrames('tiff', multiFrameImageData);
+                const tiffOptions = buildTiffOptions();
+                fileData = await Image.encodeFrames('tiff', multiFrameImageData, tiffOptions);
                 mimeType = 'image/tiff';
                 extension = 'tiff';
             }
@@ -307,7 +327,8 @@ export async function applySaveImage(state, hasMetadata, cleanMetadataForExport,
                     extension = 'apng';
                     break;
                 case 'tiff':
-                    fileData = await image.save('tiff');
+                    const tiffOptions = buildTiffOptions();
+                    fileData = await image.save('tiff', tiffOptions);
                     mimeType = 'image/tiff';
                     extension = 'tiff';
                     break;
