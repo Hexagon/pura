@@ -205,6 +205,11 @@ export async function applySaveImage(state, hasMetadata, cleanMetadataForExport,
         const multiFrame = document.getElementById('saveMultiFrame').checked;
         const filename = document.getElementById('saveFilename').value || 'pura-export';
         
+        // Get TIFF options
+        const tiffCompression = document.getElementById('tiffCompression').value;
+        const tiffGrayscale = document.getElementById('tiffGrayscale').checked;
+        const tiffRGB = document.getElementById('tiffRGB').checked;
+        
         let fileData;
         let mimeType;
         let extension;
@@ -257,7 +262,19 @@ export async function applySaveImage(state, hasMetadata, cleanMetadataForExport,
                 mimeType = 'image/apng';
                 extension = 'apng';
             } else if (format === 'tiff') {
-                fileData = await Image.encodeFrames('tiff', multiFrameImageData);
+                // Build TIFF options
+                const tiffOptions = {};
+                if (tiffCompression && tiffCompression !== 'none') {
+                    tiffOptions.compression = tiffCompression;
+                }
+                if (tiffGrayscale) {
+                    tiffOptions.grayscale = true;
+                }
+                if (tiffRGB) {
+                    tiffOptions.rgb = true;
+                }
+                
+                fileData = await Image.encodeFrames('tiff', multiFrameImageData, tiffOptions);
                 mimeType = 'image/tiff';
                 extension = 'tiff';
             }
@@ -307,7 +324,19 @@ export async function applySaveImage(state, hasMetadata, cleanMetadataForExport,
                     extension = 'apng';
                     break;
                 case 'tiff':
-                    fileData = await image.save('tiff');
+                    // Build TIFF options
+                    const tiffOptions = {};
+                    if (tiffCompression && tiffCompression !== 'none') {
+                        tiffOptions.compression = tiffCompression;
+                    }
+                    if (tiffGrayscale) {
+                        tiffOptions.grayscale = true;
+                    }
+                    if (tiffRGB) {
+                        tiffOptions.rgb = true;
+                    }
+                    
+                    fileData = await image.save('tiff', tiffOptions);
                     mimeType = 'image/tiff';
                     extension = 'tiff';
                     break;

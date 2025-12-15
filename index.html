@@ -372,6 +372,24 @@
             <label id="qualityLabel" style="display: none;">Quality: <span id="qualityValue">90</span>
                 <input type="range" id="saveQuality" min="0" max="100" value="90">
             </label>
+            <div id="tiffOptions" style="display: none;">
+                <label>Compression:
+                    <select id="tiffCompression" style="width: 100%; padding: 8px; margin-top: 5px; background: #3d3d3d; border: 1px solid #4d4d4d; color: #e0e0e0; border-radius: 4px;">
+                        <option value="none">None</option>
+                        <option value="lzw">LZW</option>
+                        <option value="packbits">PackBits</option>
+                        <option value="deflate">Deflate</option>
+                    </select>
+                </label>
+                <label>
+                    <input type="checkbox" id="tiffGrayscale">
+                    Encode as grayscale
+                </label>
+                <label>
+                    <input type="checkbox" id="tiffRGB">
+                    Encode as RGB (no alpha channel)
+                </label>
+            </div>
             <label>
                 <input type="checkbox" id="saveMultiFrame">
                 Export as animation/multi-page (uses layer durations for GIF/APNG, pages for TIFF)

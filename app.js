@@ -1212,12 +1212,20 @@ function setupEventListeners() {
     document.getElementById('saveFormat').addEventListener('change', (e) => {
         const format = e.target.value;
         const qualityLabel = document.getElementById('qualityLabel');
+        const tiffOptions = document.getElementById('tiffOptions');
         
         // Show quality slider for JPEG, WebP, HEIC, and AVIF
         if (format === 'jpeg' || format === 'webp' || format === 'heic' || format === 'avif') {
             qualityLabel.style.display = 'block';
         } else {
             qualityLabel.style.display = 'none';
+        }
+        
+        // Show TIFF options for TIFF format
+        if (format === 'tiff') {
+            tiffOptions.style.display = 'block';
+        } else {
+            tiffOptions.style.display = 'none';
         }
     });
     
