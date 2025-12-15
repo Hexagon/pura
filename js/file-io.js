@@ -207,7 +207,7 @@ function buildTiffOptions() {
     if (tiffCompression && tiffCompression !== 'none') {
         tiffOptions.compression = tiffCompression;
     }
-    // grayscale takes precedence over rgb if both are checked
+    // Grayscale takes precedence over RGB if both are checked
     if (tiffGrayscale) {
         tiffOptions.grayscale = true;
     } else if (tiffRGB) {
