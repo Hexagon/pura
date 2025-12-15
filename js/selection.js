@@ -152,11 +152,16 @@ export function drawSelectionOutline(state, timestamp = 0) {
     // Marching ants effect
     const dashOffset = -(timestamp / 50) % 16; // Animate dash offset
     
+    // Compensate line width for zoom to keep visual thickness constant
+    const zoom = state.zoom || 1;
+    const compensatedLineWidth = 1 / zoom;
+    const compensatedDashPattern = [8 / zoom, 8 / zoom];
+    
     ctx.save();
     ctx.strokeStyle = '#000000';
-    ctx.lineWidth = 1;
-    ctx.setLineDash([8, 8]);
-    ctx.lineDashOffset = dashOffset;
+    ctx.lineWidth = compensatedLineWidth;
+    ctx.setLineDash(compensatedDashPattern);
+    ctx.lineDashOffset = dashOffset / zoom;
     
     if (state.selectionType === 'rect') {
         ctx.strokeRect(state.selection.x, state.selection.y, state.selection.width, state.selection.height);
@@ -172,7 +177,7 @@ export function drawSelectionOutline(state, timestamp = 0) {
     
     // Draw white outline underneath for contrast
     ctx.strokeStyle = '#ffffff';
-    ctx.lineDashOffset = dashOffset + 8;
+    ctx.lineDashOffset = (dashOffset + 8) / zoom;
     
     if (state.selectionType === 'rect') {
         ctx.strokeRect(state.selection.x, state.selection.y, state.selection.width, state.selection.height);
