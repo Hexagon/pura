@@ -76,8 +76,6 @@ js/
 └── ui.js           - UI helpers and updates
 ```
 
-For more details, see [IMPROVEMENTS.md](IMPROVEMENTS.md).
-
 ## Development
 
 Simply open `index.html` in a modern web browser. No build step required!
