@@ -114,10 +114,15 @@ export function composeLayers(state) {
         const offsetX = activeLayer.offsetX || 0;
         const offsetY = activeLayer.offsetY || 0;
         
+        // Compensate line width for zoom to keep visual thickness constant
+        const zoom = state.zoom || 1;
+        const compensatedLineWidth = 2 / zoom;
+        const compensatedDashPattern = [8 / zoom, 8 / zoom];
+        
         state.ctx.save();
         state.ctx.strokeStyle = '#ff0000';
-        state.ctx.lineWidth = 2;
-        state.ctx.setLineDash([8, 8]);
+        state.ctx.lineWidth = compensatedLineWidth;
+        state.ctx.setLineDash(compensatedDashPattern);
         state.ctx.strokeRect(offsetX, offsetY, activeLayer.canvas.width, activeLayer.canvas.height);
         state.ctx.restore();
     }
