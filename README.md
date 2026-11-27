@@ -46,7 +46,7 @@ Press `?` in the app for the full list. Highlights:
 ## Technology
 
 - Pure vanilla JavaScript (ES modules, no build step, no frameworks)
-- [@cross/image 0.5.0](https://jsr.io/@cross/image) for decoding, encoding and filters
+- [cross-image 0.5.1](https://github.com/cross-org/image) for decoding, encoding and filters
 - HTML5 Canvas for rendering and compositing
 
 See [AGENTS.md](AGENTS.md) for the architecture and contribution guidelines.

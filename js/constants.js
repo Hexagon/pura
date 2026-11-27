@@ -1,7 +1,7 @@
 // Constants and External Imports
 
-// @cross/image is published on JSR; esm.sh serves JSR packages as browser ES modules
-export { Image } from 'https://esm.sh/jsr/@cross/image@0.5.0';
+// Import cross-image from jsdelivr CDN
+export { Image } from 'https://cdn.jsdelivr.net/npm/cross-image@0.5.1/esm/mod.js';
 
 // Constants
 export const MIN_LAYER_DURATION = 10;

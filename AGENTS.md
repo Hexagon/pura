@@ -89,9 +89,8 @@ js/
 
 ## Dependencies
 
-- **@cross/image 0.5.0** (JSR), loaded in `js/constants.js` from `https://esm.sh/jsr/@cross/image@0.5.0`.
-  It is JSR-only from 0.5.0 (the npm `cross-image` package / jsDelivr stops at 0.4.3), hence esm.sh.
-  Trust CDN availability — no vendored fallback.
+- **cross-image 0.5.1** (npm; same code as `@cross/image` on JSR), loaded in `js/constants.js` from
+  `https://cdn.jsdelivr.net/npm/cross-image@0.5.1/esm/mod.js`. Trust CDN availability — no vendored fallback.
 - Nothing else. Do not add frameworks, build tools, utility libraries, CSS frameworks, TypeScript,
   preprocessors or linting configs. Do not vendor dependencies.
 
@@ -120,9 +119,8 @@ js/
 ## Testing
 
 No test infrastructure is committed; test manually in a browser (`python3 -m http.server 8000`).
-For automated checks, Playwright works well: intercept `https://esm.sh/jsr/@cross/**` and serve the
-JSR npm-compat build (`https://npm.jsr.io/@jsr/cross__image` → tarball → `package/mod.js`) when the
-CDN isn't reachable. Verify: drawing tools, selections + clipping, layers (reorder/merge/blend),
+For automated checks, Playwright works well: when the CDN isn't reachable, `npm pack cross-image@0.5.1`
+and intercept `https://cdn.jsdelivr.net/npm/cross-image@0.5.1/esm/**` to serve files from `package/esm/`. Verify: drawing tools, selections + clipping, layers (reorder/merge/blend),
 undo/redo, effects preview/cancel, open/save in several formats incl. animated GIF round-trip.
 
 Target browsers: current Chrome, Edge, Firefox, Safari (ES modules, pointer events, `:has()`).
