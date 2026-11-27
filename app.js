@@ -588,6 +588,112 @@ function drawingApi() {
 
 let lastPointer = null;
 
+// Touch: a stroke starts only after a short delay or once the finger moves, so a
+// second finger can still turn the gesture into a pinch without painting anything
+const TOUCH_START_DELAY = 90;
+const TOUCH_SLOP = 6;
+const touches = new Map();      // pointerId -> { x, y } for active touch pointers
+let pendingTouch = null;        // { event, id, timer } – first finger not yet drawing
+let pinch = null;               // { dist, midX, midY, startTime, moved }
+let touchPan = null;            // { id, x, y } – one-finger pan of the canvas backdrop
+let touchGestureLock = false;   // ignore leftover fingers until all are lifted
+
+function startPendingTouch() {
+    if (!pendingTouch) return;
+    clearTimeout(pendingTouch.timer);
+    const { event } = pendingTouch;
+    pendingTouch = null;
+    if (hasWorkspace()) Drawing.startDrawing(state, event, drawingApi());
+}
+
+function dropPendingTouch() {
+    if (!pendingTouch) return;
+    clearTimeout(pendingTouch.timer);
+    pendingTouch = null;
+}
+
+function pinchGeometry() {
+    const [a, b] = [...touches.values()];
+    return { dist: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)), midX: (a.x + b.x) / 2, midY: (a.y + b.y) / 2 };
+}
+
+// Capture-phase handlers on the canvas container: they see every touch before the
+// canvas does and swallow the ones that belong to a pan/pinch gesture
+function onTouchDown(e) {
+    if (e.pointerType !== 'touch' || !hasWorkspace()) return;
+    const container = $('canvasContainer');
+    touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (touches.size === 2) {
+        e.stopPropagation();
+        e.preventDefault();
+        dropPendingTouch();
+        if (state.isDrawing) Drawing.cancelDrawing(state, drawingApi());
+        touchPan = null;
+        touchGestureLock = true;
+        try { container.setPointerCapture(e.pointerId); } catch { /* pointer already gone */ }
+        pinch = { ...pinchGeometry(), startTime: performance.now(), moved: 0 };
+        return;
+    }
+    if (touches.size > 2 || touchGestureLock) {
+        e.stopPropagation();
+        e.preventDefault();
+        return;
+    }
+    if (!$('canvasWrapper').contains(e.target)) {
+        // One finger on the empty backdrop pans
+        e.stopPropagation();
+        e.preventDefault();
+        touchPan = { id: e.pointerId, x: e.clientX, y: e.clientY };
+        container.setPointerCapture(e.pointerId);
+    }
+}
+
+function onTouchMove(e) {
+    if (e.pointerType !== 'touch' || !touches.has(e.pointerId)) return;
+    const container = $('canvasContainer');
+    touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pinch && touches.size >= 2) {
+        e.stopPropagation();
+        const g = pinchGeometry();
+        pinch.moved += Math.abs(g.dist - pinch.dist) + Math.hypot(g.midX - pinch.midX, g.midY - pinch.midY);
+        zoomTo(state.zoom * g.dist / pinch.dist, g.midX, g.midY);
+        container.scrollLeft -= g.midX - pinch.midX;
+        container.scrollTop -= g.midY - pinch.midY;
+        Object.assign(pinch, g);
+        return;
+    }
+    if (touchPan && touchPan.id === e.pointerId) {
+        e.stopPropagation();
+        container.scrollLeft -= e.clientX - touchPan.x;
+        container.scrollTop -= e.clientY - touchPan.y;
+        touchPan.x = e.clientX;
+        touchPan.y = e.clientY;
+        return;
+    }
+    if (touchGestureLock) {
+        // A finger left over from a pinch pans instead of painting
+        e.stopPropagation();
+        touchPan = { id: e.pointerId, x: e.clientX, y: e.clientY };
+    }
+}
+
+function onTouchUp(e) {
+    if (e.pointerType !== 'touch' || !touches.has(e.pointerId)) return;
+    touches.delete(e.pointerId);
+    if (touchPan?.id === e.pointerId) touchPan = null;
+    if (pinch) {
+        e.stopPropagation();
+        if (touches.size < 2) {
+            // A quick two-finger tap undoes, like most touch painting apps
+            if (e.type === 'pointerup' && performance.now() - pinch.startTime < 300 && pinch.moved < 20) undo();
+            pinch = null;
+        }
+    } else if (touchGestureLock) {
+        e.stopPropagation();
+    }
+    if (touches.size === 0) touchGestureLock = false;
+}
+
 function onPointerDown(e) {
     if (!hasWorkspace()) return;
     const container = $('canvasContainer');
@@ -601,17 +707,27 @@ function onPointerDown(e) {
     if (e.button !== 0) return;
     e.preventDefault();
     $('canvasWrapper').setPointerCapture(e.pointerId);
+    if (e.pointerType === 'touch') {
+        dropPendingTouch();
+        pendingTouch = { event: e, id: e.pointerId, timer: setTimeout(startPendingTouch, TOUCH_START_DELAY) };
+        return;
+    }
     Drawing.startDrawing(state, e, drawingApi());
 }
 
 function onPointerMove(e) {
     if (!hasWorkspace()) return;
-    lastPointer = { clientX: e.clientX, clientY: e.clientY };
+    lastPointer = e.pointerType === 'touch' ? null : { clientX: e.clientX, clientY: e.clientY };
     if (panning) {
         const container = $('canvasContainer');
         container.scrollLeft = panning.left - (e.clientX - panning.x);
         container.scrollTop = panning.top - (e.clientY - panning.y);
         return;
+    }
+    if (pendingTouch && pendingTouch.id === e.pointerId) {
+        const { event } = pendingTouch;
+        if (Math.hypot(e.clientX - event.clientX, e.clientY - event.clientY) < TOUCH_SLOP) return;
+        startPendingTouch();
     }
     const pos = Drawing.getMousePos(state, e);
     updateStatus(pos);
@@ -628,6 +744,13 @@ function onPointerUp(e) {
         panning = null;
         $('canvasWrapper').classList.remove('panning');
         return;
+    }
+    if (pendingTouch && pendingTouch.id === e.pointerId) {
+        if (e.type === 'pointercancel') {
+            dropPendingTouch();
+            return;
+        }
+        startPendingTouch(); // a tap: fill, text, pick, dot of paint…
     }
     if (!hasWorkspace() || !state.isDrawing) return;
     Drawing.stopDrawing(state, e, drawingApi());
@@ -1188,6 +1311,11 @@ function setupEventListeners() {
         updateBrushCursor();
     });
     wrapper.addEventListener('contextmenu', e => e.preventDefault());
+    const container = $('canvasContainer');
+    container.addEventListener('pointerdown', onTouchDown, true);
+    container.addEventListener('pointermove', onTouchMove, true);
+    container.addEventListener('pointerup', onTouchUp, true);
+    container.addEventListener('pointercancel', onTouchUp, true);
 
     $('canvasContainer').addEventListener('wheel', (e) => {
         if (!hasWorkspace() || !(e.ctrlKey || e.metaKey)) return;
@@ -1375,6 +1503,7 @@ function setupEventListeners() {
         header.addEventListener('click', () => UI.togglePanelSection(header.dataset.panel));
     });
     on('rightCollapseToggle', 'click', () => UI.toggleSidebar('rightSidebar'));
+    on('closeSheetBtn', 'click', () => UI.toggleSidebar('rightSidebar', true));
 
     // Clicking the dimmed backdrop closes a dialog
     document.querySelectorAll('.modal').forEach(modal => {
