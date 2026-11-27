@@ -29,6 +29,8 @@ js/
   history.js    Undo/redo snapshots (max 50)
   metadata.js   Metadata helpers + property-grid editor in the inspector
   ui.js         Modals, toasts, sidebar/panel collapse persistence, undo/redo button state
+sw.js           Service worker (PWA): offline cache, share-target receiver
+manifest.webmanifest  PWA manifest (icons in img/icons/, file_handlers, share_target)
 ```
 
 ## Architecture
@@ -73,6 +75,13 @@ js/
   bottom sheet (closed by default, state not persisted — see `UI.compactLayout`) and modals into bottom sheets.
 - Keyboard: `onKeyDown` in app.js. It ignores typing targets (`isTypingTarget`). When a modal is open,
   Esc cancels and Enter clicks the first button in `.modal-buttons` (the primary action).
+
+### PWA
+- `sw.js`: same-origin files are network-first (a deploy shows up on the next load) with the cache as
+  offline fallback; the version-pinned cross-image CDN files are cache-first. **Add new app files to
+  `SHELL` in sw.js** so they work offline.
+- `setupPwa()` in app.js registers the worker and handles `launchQueue` (OS "Open with", from
+  `file_handlers`) and `?shared=1` (Android share sheet: sw.js parks POSTed files in the `pura-share` cache).
 
 ### History
 - Call `saveState()` (app.js wrapper) after every user action that changes pixels or layer properties,

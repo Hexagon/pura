@@ -42,6 +42,42 @@ function init() {
     setTool(state.tool);
     updateTabBar();
     showStartScreen();
+    setupPwa();
+}
+
+// ---------------------------------------------------------------------------
+// Installed app (PWA): service worker, OS "Open with", Android share sheet
+// ---------------------------------------------------------------------------
+
+function setupPwa() {
+    if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+        navigator.serviceWorker.register('sw.js').catch(err => console.warn('Service worker not registered', err));
+    }
+    // Files opened with Pura from the OS (manifest file_handlers)
+    if ('launchQueue' in window) {
+        window.launchQueue.setConsumer(async (params) => {
+            if (!params.files?.length) return;
+            const files = await Promise.all(params.files.map(handle => handle.getFile()));
+            openFiles(files);
+        });
+    }
+    // Files shared to Pura (manifest share_target, parked in a cache by sw.js)
+    if (new URLSearchParams(location.search).has('shared') && 'caches' in window) {
+        history.replaceState(null, '', location.pathname);
+        openSharedFiles();
+    }
+}
+
+async function openSharedFiles() {
+    const cache = await caches.open('pura-share');
+    const files = [];
+    for (const request of await cache.keys()) {
+        const response = await cache.match(request);
+        const name = decodeURIComponent(response.headers.get('X-File-Name') || 'shared-image');
+        files.push(new File([await response.blob()], name, { type: response.headers.get('Content-Type') || '' }));
+        await cache.delete(request);
+    }
+    if (files.length) openFiles(files);
 }
 
 function populateDynamicControls() {
