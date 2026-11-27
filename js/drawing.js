@@ -520,3 +520,34 @@ export function renderText(state, text, x, y, composeLayers, saveState) {
 }
 
 export { SHAPE_TOOLS };
+
+// Abort the gesture in progress without committing anything (e.g. a second finger
+// touched down to pinch-zoom): restores the layer to how it was when the stroke began
+export function cancelDrawing(state, api) {
+    if (!state.isDrawing) return;
+    state.isDrawing = false;
+    const layer = state.layers[state.activeLayerIndex];
+    const restore = (snapshot) => {
+        layer.ctx.save();
+        layer.ctx.globalCompositeOperation = 'copy';
+        layer.ctx.drawImage(snapshot, 0, 0);
+        layer.ctx.restore();
+    };
+    if ((state.tool === 'brush' || state.tool === 'eraser') && state.strokeSnapshot) {
+        restore(state.strokeSnapshot);
+    } else if (state.tool === 'move') {
+        if (state.floating) {
+            restore(state.moveSnapshot);
+            api.selectionChanged();
+        } else if (state.moveOrigin) {
+            layer.offsetX = state.moveOrigin.x;
+            layer.offsetY = state.moveOrigin.y;
+            api.layerMoved();
+        }
+    }
+    state.strokeSnapshot = state.strokeCanvas = state.strokePoints = null;
+    state.floating = state.moveSnapshot = null;
+    state.lassoPath = null;
+    clearPreview(state);
+    api.composeLayers();
+}

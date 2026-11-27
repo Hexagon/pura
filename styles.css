@@ -77,7 +77,17 @@ kbd {
     display: flex;
     flex-direction: column;
     height: 100vh;
+    height: 100dvh;
 }
+
+html {
+    /* no double-tap zoom delay on buttons */
+    touch-action: manipulation;
+}
+
+.touch-only { display: none; }
+
+.sheet-header { display: none; }
 
 /* ==========================================================================
    Top bar
@@ -1411,4 +1421,187 @@ textarea.metadata-input {
 @media (max-width: 900px) {
     .brand span, .options-hint, .status-right { display: none; }
     .right-sidebar { width: 240px; }
+}
+
+/* Gestures on the canvas are handled in JS (pinch zoom, two-finger pan) */
+body:not(.no-workspace) .canvas-container {
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+}
+
+/* ==========================================================================
+   Touch devices: bigger hit targets, no hover-only affordances
+   ========================================================================== */
+@media (hover: none) and (pointer: coarse) {
+    .mouse-only { display: none !important; }
+    .touch-only { display: inline; }
+    p.touch-only { display: block; }
+
+    .tab-close { opacity: 1; width: 26px; height: 26px; }
+    /* taps leave :hover stuck on touch screens */
+    .rail-btn:hover:not(.active), .icon-btn:hover:not(:disabled), .mini-btn:hover:not(:disabled) {
+        background: transparent;
+    }
+    .metadata-delete-btn { opacity: 1; }
+
+    .mini-btn { width: 36px; height: 36px; }
+    .mini-btn .icon { width: 18px; height: 18px; }
+    .layer-visibility { width: 34px; height: 34px; }
+    .layer-item { padding: 7px 8px 7px 4px; }
+    .chip-btn { height: 32px; padding: 0 14px; }
+    .toggle-chip { width: 34px; height: 32px; }
+    .tool-btn { min-height: 40px; }
+
+    input[type="range"] { height: 6px; }
+    input[type="range"]::-webkit-slider-thumb { width: 22px; height: 22px; }
+    input[type="range"]::-moz-range-thumb { width: 16px; height: 16px; }
+    input[type="checkbox"] { width: 20px; height: 20px; }
+
+    /* iOS zooms the page when focusing inputs smaller than 16px */
+    select, input[type="text"], input[type="number"], textarea,
+    .layer-rename, .metadata-input {
+        font-size: 16px !important;
+    }
+    select, input[type="text"], input[type="number"] { height: 38px; }
+}
+
+/* ==========================================================================
+   Phones: tools along the bottom, inspector as a bottom sheet
+   ========================================================================== */
+@media (max-width: 760px) {
+    :root { --rail-h: 58px; }
+
+    .toolbar {
+        height: auto;
+        min-height: 48px;
+        gap: 2px;
+        padding: env(safe-area-inset-top) max(6px, env(safe-area-inset-right)) 0 max(6px, env(safe-area-inset-left));
+        overflow-x: auto;
+        scrollbar-width: none;
+    }
+    .toolbar::-webkit-scrollbar { display: none; }
+    /* collapsed rather than display:none: it holds the #brandGrad used by active tool icons */
+    .brand { position: absolute; width: 0; height: 0; overflow: hidden; padding: 0; border: 0; }
+    .toolbar-section { padding: 0 2px; gap: 0; }
+    .toolbar-section + .toolbar-section { border-left: none; }
+    .clipboard-section,
+    #zoomInBtn, #zoomOutBtn, #zoomResetBtn, .zoom-pill .pill-sep { display: none; }
+    .icon-btn { width: 34px; height: 40px; }
+    .toolbar-spacer { min-width: 4px; }
+    #rightCollapseToggle { color: var(--text); }
+    .zoom-level { min-width: 44px; }
+    .zoom-pill .icon-btn { width: 34px; height: 34px; }
+
+    .tab-bar { height: 34px; padding: 0 4px; }
+    .tab { min-width: 0; max-width: 160px; }
+
+    .options-bar { gap: 14px; height: 48px; padding: 0 10px; }
+    .options-tool-name { padding-right: 10px; }
+    .tool-options-group .hint { display: none; }
+    .tool-options-group input[type="range"] { width: 96px; }
+
+    .main-content { flex-direction: column; }
+    .canvas-container { order: 1; padding: 12px; }
+
+    .tool-rail {
+        order: 2;
+        width: 100%;
+        height: calc(var(--rail-h) + env(safe-area-inset-bottom));
+        flex-direction: row;
+        gap: 2px;
+        padding: 0 max(8px, env(safe-area-inset-right)) env(safe-area-inset-bottom) max(8px, env(safe-area-inset-left));
+        border-right: none;
+        border-top: 1px solid var(--border);
+        overflow-x: auto;
+        overflow-y: hidden;
+    }
+    .tool-rail::-webkit-scrollbar { display: none; }
+    .rail-btn { width: 44px; height: 44px; }
+    .rail-btn .icon { width: 20px; height: 20px; }
+    .rail-sep { width: 1px; height: 24px; margin: 0 4px; }
+    .rail-spacer { display: none; }
+    /* Colours first so they are always reachable without scrolling */
+    .color-swatches { order: -2; width: 44px; height: 44px; }
+    .color-swatches input { width: 30px; height: 30px; }
+    .swatch-actions {
+        order: -1;
+        flex-direction: column;
+        margin: 0 6px 0 0;
+        padding-right: 6px;
+        border-right: 1px solid var(--border-strong);
+    }
+    .swatch-actions .mini-btn { width: 30px; height: 24px; }
+
+    .right-sidebar,
+    .right-sidebar.collapsed {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: calc(var(--rail-h) + env(safe-area-inset-bottom));
+        z-index: 50;
+        width: auto;
+        max-height: 62dvh;
+        border-left: none;
+        border-top: 1px solid var(--border-strong);
+        border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+        box-shadow: 0 -16px 40px rgba(0, 0, 0, 0.5);
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        transition: transform 0.25s ease, visibility 0.25s;
+    }
+    .right-sidebar.collapsed,
+    /* keep the canvas visible while an effect previews */
+    body:has(#effectModal.active) .right-sidebar {
+        transform: translateY(calc(100% + var(--rail-h) + 40px));
+        visibility: hidden;
+    }
+    .sheet-header {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 8px 6px 4px 14px;
+        background: var(--bg-2);
+        border-bottom: 1px solid var(--border);
+    }
+    .sheet-grip {
+        position: absolute;
+        top: 5px;
+        left: 50%;
+        width: 36px;
+        height: 4px;
+        margin-left: -18px;
+        border-radius: 999px;
+        background: var(--border-strong);
+    }
+    .layers-panel { max-height: 30dvh; }
+    .panel-header { padding: 14px; }
+
+    .status-bar { display: none; }
+    .toasts { bottom: calc(var(--rail-h) + env(safe-area-inset-bottom) + 14px); width: 92vw; }
+    .toast { text-align: center; }
+
+    /* Dialogs become bottom sheets */
+    .modal { align-items: flex-end; }
+    .modal-content,
+    .modal-content.wide {
+        width: 100%;
+        max-width: 100%;
+        max-height: 88dvh;
+        padding: 20px 18px calc(18px + env(safe-area-inset-bottom));
+        border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+        border-bottom: none;
+    }
+    .modal.floating { padding-bottom: 0; }
+    .modal-buttons button { flex: 1; height: 44px; }
+
+    .start-content { padding: 24px 16px; }
+    .start-logo { width: 200px; margin-bottom: 20px; }
+    .start-content h1 { font-size: 23px; }
+    .start-content p { font-size: 14px; margin-bottom: 22px; }
+    .start-btn { min-width: 0; width: 100%; }
 }

@@ -6,19 +6,29 @@ export function updateUI(state) {
     document.getElementById('redoBtn').disabled = state.historyIndex >= state.history.length - 1;
 }
 
-export function toggleSidebar(sidebarId) {
+// On phones the inspector is a bottom sheet over the canvas: it starts closed and its
+// open/closed state is not persisted, so it never overrides the desktop preference
+export const compactLayout = window.matchMedia('(max-width: 760px)');
+
+export function toggleSidebar(sidebarId, collapsed) {
     const sidebar = document.getElementById(sidebarId);
     if (!sidebar) return;
-    sidebar.classList.toggle('collapsed');
-    localStorage.setItem(`${sidebarId}-collapsed`, sidebar.classList.contains('collapsed'));
+    sidebar.classList.toggle('collapsed', collapsed);
+    if (!compactLayout.matches) {
+        localStorage.setItem(`${sidebarId}-collapsed`, sidebar.classList.contains('collapsed'));
+    }
+}
+
+function applySidebarState() {
+    for (const id of ['rightSidebar']) {
+        const collapsed = compactLayout.matches || localStorage.getItem(`${id}-collapsed`) === 'true';
+        document.getElementById(id)?.classList.toggle('collapsed', collapsed);
+    }
 }
 
 export function restoreUIState() {
-    for (const id of ['rightSidebar']) {
-        if (localStorage.getItem(`${id}-collapsed`) === 'true') {
-            document.getElementById(id)?.classList.add('collapsed');
-        }
-    }
+    applySidebarState();
+    compactLayout.addEventListener('change', applySidebarState);
     restorePanelStates();
 }
 

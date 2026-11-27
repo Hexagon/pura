@@ -64,6 +64,13 @@ js/
   point under the cursor fixed. `.pixelated` is applied at ≥200%.
 - Pointer events are bound on `#canvasWrapper` with pointer capture (strokes continue outside the canvas).
   Space+drag / middle-drag pans; Ctrl+wheel zooms.
+- Touch: capture-phase listeners on `#canvasContainer` (`onTouchDown/Move/Up`) own multi-touch. A one-finger
+  stroke starts after `TOUCH_START_DELAY` or `TOUCH_SLOP` px of movement, so a second finger turns it into a
+  pinch-zoom/pan (`Drawing.cancelDrawing()` reverts a stroke already begun). Two-finger tap = undo; one finger
+  on the backdrop pans. The container has `touch-action: none` while a workspace is open.
+- Responsive: `@media (hover: none) and (pointer: coarse)` enlarges hit targets and toggles `.mouse-only` /
+  `.touch-only`; `@media (max-width: 760px)` moves the tool rail to the bottom, turns the inspector into a
+  bottom sheet (closed by default, state not persisted — see `UI.compactLayout`) and modals into bottom sheets.
 - Keyboard: `onKeyDown` in app.js. It ignores typing targets (`isTypingTarget`). When a modal is open,
   Esc cancels and Enter clicks the first button in `.modal-buttons` (the primary action).
 
