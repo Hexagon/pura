@@ -1,564 +1,522 @@
 // Drawing tools module
-
-// Import selection functions
 import * as Selection from './selection.js';
+import { cloneCanvas, createCanvas, pickLayerAt } from './layers.js';
 
-// Allowed font families for text tool
-const ALLOWED_FONTS = [
+export const ALLOWED_FONTS = [
     'Arial', 'Helvetica', 'Times New Roman', 'Courier New',
     'Georgia', 'Verdana', 'Comic Sans MS', 'Impact'
 ];
 
+const SHAPE_TOOLS = ['rect', 'circle', 'line'];
+
 export function getMousePos(state, e) {
     const rect = state.canvas.getBoundingClientRect();
-    // getBoundingClientRect accounts for CSS transforms (including zoom)
     return {
         x: (e.clientX - rect.left) * (state.canvas.width / rect.width),
         y: (e.clientY - rect.top) * (state.canvas.height / rect.height)
     };
 }
 
-// Convert workspace coordinates to layer-local coordinates
 function toLayerCoords(layer, x, y) {
-    const offsetX = layer.offsetX || 0;
-    const offsetY = layer.offsetY || 0;
+    return { x: x - (layer.offsetX || 0), y: y - (layer.offsetY || 0) };
+}
+
+function clearPreview(state) {
+    state.previewCtx.clearRect(0, 0, state.previewCanvas.width, state.previewCanvas.height);
+}
+
+export function hexToRgb(hex) {
     return {
-        x: x - offsetX,
-        y: y - offsetY
+        r: parseInt(hex.slice(1, 3), 16),
+        g: parseInt(hex.slice(3, 5), 16),
+        b: parseInt(hex.slice(5, 7), 16)
     };
 }
 
-// Flood fill algorithm
-function floodFill(imageData, x, y, fillColor, tolerance) {
-    const width = imageData.width;
-    const height = imageData.height;
-    const data = imageData.data;
-    
-    x = Math.floor(x);
-    y = Math.floor(y);
-    
-    if (x < 0 || x >= width || y < 0 || y >= height) return;
-    
-    const startPos = (y * width + x) * 4;
-    const startR = data[startPos];
-    const startG = data[startPos + 1];
-    const startB = data[startPos + 2];
-    const startA = data[startPos + 3];
-    
-    // Parse fill color
-    const r = parseInt(fillColor.slice(1, 3), 16);
-    const g = parseInt(fillColor.slice(3, 5), 16);
-    const b = parseInt(fillColor.slice(5, 7), 16);
-    
-    // Check if already the same color
-    if (startR === r && startG === g && startB === b && startA === 255) {
+export function rgbToHex(r, g, b) {
+    return '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('');
+}
+
+// Shift constrains: rect -> square, ellipse -> circle, line -> 45° steps
+function constrainEnd(tool, x0, y0, x1, y1, shift) {
+    if (!shift) return { x: x1, y: y1 };
+    const dx = x1 - x0;
+    const dy = y1 - y0;
+    if (tool === 'line') {
+        const angle = Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) * (Math.PI / 4);
+        const len = Math.hypot(dx, dy);
+        return { x: x0 + Math.cos(angle) * len, y: y0 + Math.sin(angle) * len };
+    }
+    const size = Math.max(Math.abs(dx), Math.abs(dy));
+    return { x: x0 + Math.sign(dx || 1) * size, y: y0 + Math.sign(dy || 1) * size };
+}
+
+function traceShape(ctx, tool, x0, y0, x1, y1, fromCenter) {
+    ctx.beginPath();
+    if (tool === 'line') {
+        ctx.moveTo(x0, y0);
+        ctx.lineTo(x1, y1);
         return;
     }
-    
-    const stack = [[x, y]];
-    const visited = new Set();
-    
-    while (stack.length > 0) {
-        const [cx, cy] = stack.pop();
-        const key = `${cx},${cy}`;
-        
-        if (visited.has(key)) continue;
-        if (cx < 0 || cx >= width || cy < 0 || cy >= height) continue;
-        
-        const pos = (cy * width + cx) * 4;
-        const cr = data[pos];
-        const cg = data[pos + 1];
-        const cb = data[pos + 2];
-        const ca = data[pos + 3];
-        
-        // Check if color matches within tolerance
-        const dr = Math.abs(cr - startR);
-        const dg = Math.abs(cg - startG);
-        const db = Math.abs(cb - startB);
-        const da = Math.abs(ca - startA);
-        
-        if (dr <= tolerance && dg <= tolerance && db <= tolerance && da <= tolerance) {
-            visited.add(key);
-            
-            // Fill pixel
-            data[pos] = r;
-            data[pos + 1] = g;
-            data[pos + 2] = b;
-            data[pos + 3] = 255;
-            
-            // Add neighbors
-            stack.push([cx + 1, cy]);
-            stack.push([cx - 1, cy]);
-            stack.push([cx, cy + 1]);
-            stack.push([cx, cy - 1]);
-        }
+    let left, top, w, h;
+    if (fromCenter) {
+        w = Math.abs(x1 - x0) * 2;
+        h = Math.abs(y1 - y0) * 2;
+        left = x0 - w / 2;
+        top = y0 - h / 2;
+    } else {
+        left = Math.min(x0, x1);
+        top = Math.min(y0, y1);
+        w = Math.abs(x1 - x0);
+        h = Math.abs(y1 - y0);
+    }
+    if (tool === 'rect') {
+        ctx.rect(left, top, w, h);
+    } else {
+        ctx.ellipse(left + w / 2, top + h / 2, w / 2, h / 2, 0, 0, Math.PI * 2);
     }
 }
 
-export function startDrawing(state, e, composeLayers) {
+function paintShape(ctx, state, x0, y0, x1, y1, e) {
+    const end = constrainEnd(state.tool, x0, y0, x1, y1, e.shiftKey);
+    traceShape(ctx, state.tool, x0, y0, end.x, end.y, e.altKey && state.tool !== 'line');
+    ctx.lineWidth = state.brushSize;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = state.tool === 'rect' ? 'miter' : 'round';
+    ctx.globalAlpha = state.opacity;
+    const mode = state.tool === 'line' ? 'stroke' : state.shapeFill;
+    if (mode === 'fill' || mode === 'both') {
+        ctx.fillStyle = mode === 'both' ? state.backgroundColor : state.foregroundColor;
+        ctx.fill();
+    }
+    if (mode === 'stroke' || mode === 'both') {
+        ctx.strokeStyle = state.foregroundColor;
+        ctx.stroke();
+    }
+}
+
+function paintGradient(ctx, state, x0, y0, x1, y1, width, height) {
+    let gradient;
+    if (state.gradientType === 'radial') {
+        gradient = ctx.createRadialGradient(x0, y0, 0, x0, y0, Math.max(1, Math.hypot(x1 - x0, y1 - y0)));
+    } else {
+        gradient = ctx.createLinearGradient(x0, y0, x1, y1);
+    }
+    gradient.addColorStop(0, state.foregroundColor);
+    gradient.addColorStop(1, state.backgroundColor);
+    ctx.fillStyle = gradient;
+    ctx.globalAlpha = state.opacity;
+    ctx.fillRect(0, 0, width, height);
+}
+
+// Re-render the whole brush/eraser stroke over the pre-stroke snapshot so that
+// opacity does not accumulate where the stroke overlaps itself
+function renderStroke(state, layer) {
+    const ctx = layer.ctx;
+    const pts = state.strokePoints;
+    ctx.save();
+    ctx.globalCompositeOperation = 'copy';
+    ctx.drawImage(state.strokeSnapshot, 0, 0);
+    ctx.restore();
+
+    const stroke = state.strokeCanvas;
+    const sctx = stroke.getContext('2d');
+    sctx.clearRect(0, 0, stroke.width, stroke.height);
+    sctx.strokeStyle = sctx.fillStyle = state.tool === 'eraser' ? '#000000' : state.foregroundColor;
+    sctx.lineWidth = state.brushSize;
+    sctx.lineCap = 'round';
+    sctx.lineJoin = 'round';
+    if (pts.length === 1) {
+        sctx.beginPath();
+        sctx.arc(pts[0].x, pts[0].y, state.brushSize / 2, 0, Math.PI * 2);
+        sctx.fill();
+    } else {
+        sctx.beginPath();
+        sctx.moveTo(pts[0].x, pts[0].y);
+        for (let i = 1; i < pts.length - 1; i++) {
+            const mx = (pts[i].x + pts[i + 1].x) / 2;
+            const my = (pts[i].y + pts[i + 1].y) / 2;
+            sctx.quadraticCurveTo(pts[i].x, pts[i].y, mx, my);
+        }
+        const last = pts[pts.length - 1];
+        sctx.lineTo(last.x, last.y);
+        sctx.stroke();
+    }
+
+    ctx.save();
+    Selection.clipToSelection(ctx, state);
+    ctx.globalAlpha = state.opacity;
+    ctx.globalCompositeOperation = state.tool === 'eraser' ? 'destination-out' : 'source-over';
+    ctx.drawImage(stroke, 0, 0);
+    ctx.restore();
+}
+
+// Scanline-free stack flood fill using typed arrays; returns a mask of filled pixels
+function floodFillMask(imageData, startX, startY, tolerance) {
+    const { width, height, data } = imageData;
+    const mask = new Uint8Array(width * height);
+    const x0 = Math.floor(startX);
+    const y0 = Math.floor(startY);
+    if (x0 < 0 || y0 < 0 || x0 >= width || y0 >= height) return mask;
+
+    const p = (y0 * width + x0) * 4;
+    const sr = data[p], sg = data[p + 1], sb = data[p + 2], sa = data[p + 3];
+    const matches = (i) => {
+        const o = i * 4;
+        return Math.abs(data[o] - sr) <= tolerance &&
+            Math.abs(data[o + 1] - sg) <= tolerance &&
+            Math.abs(data[o + 2] - sb) <= tolerance &&
+            Math.abs(data[o + 3] - sa) <= tolerance;
+    };
+
+    const stack = [y0 * width + x0];
+    mask[stack[0]] = 1;
+    while (stack.length) {
+        const i = stack.pop();
+        const x = i % width;
+        const neighbors = [
+            x > 0 ? i - 1 : -1,
+            x < width - 1 ? i + 1 : -1,
+            i - width,
+            i + width
+        ];
+        for (const n of neighbors) {
+            if (n < 0 || n >= mask.length || mask[n]) continue;
+            if (matches(n)) {
+                mask[n] = 1;
+                stack.push(n);
+            }
+        }
+    }
+    return mask;
+}
+
+function performFill(state, layer, pos) {
+    const lp = toLayerCoords(layer, pos.x, pos.y);
+    if (lp.x < 0 || lp.y < 0 || lp.x >= layer.canvas.width || lp.y >= layer.canvas.height) return false;
+    if (state.selection && !Selection.isPointInSelection(state, lp.x, lp.y)) return false;
+
+    const { width, height } = layer.canvas;
+    const imageData = layer.ctx.getImageData(0, 0, width, height);
+    const mask = floodFillMask(imageData, lp.x, lp.y, state.fillTolerance ?? 32);
+    const { r, g, b } = hexToRgb(state.foregroundColor);
+
+    const fill = new ImageData(width, height);
+    for (let i = 0; i < mask.length; i++) {
+        if (!mask[i]) continue;
+        const o = i * 4;
+        fill.data[o] = r;
+        fill.data[o + 1] = g;
+        fill.data[o + 2] = b;
+        fill.data[o + 3] = 255;
+    }
+    const fillCanvas = createCanvas(width, height);
+    fillCanvas.getContext('2d').putImageData(fill, 0, 0);
+
+    layer.ctx.save();
+    Selection.clipToSelection(layer.ctx, state);
+    layer.ctx.globalAlpha = state.opacity;
+    layer.ctx.drawImage(fillCanvas, 0, 0);
+    layer.ctx.restore();
+    return true;
+}
+
+export function sampleColor(state, pos) {
+    const x = Math.floor(pos.x);
+    const y = Math.floor(pos.y);
+    if (x < 0 || y < 0 || x >= state.canvas.width || y >= state.canvas.height) return null;
+    const [r, g, b, a] = state.ctx.getImageData(x, y, 1, 1).data;
+    if (a === 0) return null;
+    return rgbToHex(r, g, b);
+}
+
+// api: { composeLayers, saveState, pickColor(hex, isBackground), selectLayer(index),
+//        selectionChanged(), requestText(pos), layerMoved() }
+export function startDrawing(state, e, api) {
+    const layer = state.layers[state.activeLayerIndex];
+    if (!layer) return;
     const pos = getMousePos(state, e);
     state.startX = pos.x;
     state.startY = pos.y;
-    state.isDrawing = true;
-    
-    const layer = state.layers[state.activeLayerIndex];
-    
-    if (state.tool === 'fill') {
-        // Convert workspace coordinates to layer-local coordinates
-        const layerPos = toLayerCoords(layer, pos.x, pos.y);
-        
-        // Only fill if within layer bounds
-        if (layerPos.x >= 0 && layerPos.x < layer.canvas.width && layerPos.y >= 0 && layerPos.y < layer.canvas.height) {
-            // Perform flood fill immediately
-            const imageData = layer.ctx.getImageData(0, 0, layer.canvas.width, layer.canvas.height);
-            const tolerance = state.fillTolerance || 32;
-            floodFill(imageData, layerPos.x, layerPos.y, state.foregroundColor, tolerance);
-            layer.ctx.putImageData(imageData, 0, 0);
-            composeLayers();
+    state.lastEvent = e;
+
+    // Alt+click with painting tools samples a colour, like most editors
+    const tool = e.altKey && ['brush', 'fill'].includes(state.tool) ? 'eyedropper' : state.tool;
+
+    switch (tool) {
+        case 'eyedropper': {
+            const color = sampleColor(state, pos);
+            if (color) api.pickColor(color, state.tool === 'eyedropper' && e.altKey);
+            state.isDrawing = state.tool === 'eyedropper';
+            return;
         }
-        state.isDrawing = false;
-        return;
-    }
-    
-    if (state.tool === 'gradient') {
-        // Just store start position, will draw on mouse up
-        return;
-    }
-    
-    if (state.tool === 'text') {
-        // Text tool will open a modal for text input
-        return;
-    }
-    
-    if (state.tool === 'move') {
-        // Store the offset for moving the layer
-        state.moveOffsetX = 0;
-        state.moveOffsetY = 0;
-        return;
-    }
-    
-    if (state.tool === 'select' || state.tool === 'rectSelect') {
-        // Clear any existing selection when starting a new one
-        Selection.clearSelection(state);
-        return;
-    }
-    
-    if (state.tool === 'freeformSelect') {
-        // Start freeform selection path
-        state.selectionPath = [{ x: pos.x, y: pos.y }];
-        Selection.clearSelection(state);
-        return;
-    }
-    
-    if (state.tool === 'pointer') {
-        // Pointer tool just selects, doesn't draw
-        return;
-    }
-    
-    layer.ctx.strokeStyle = state.foregroundColor;
-    layer.ctx.fillStyle = state.foregroundColor;
-    layer.ctx.lineWidth = state.brushSize;
-    layer.ctx.lineCap = 'round';
-    layer.ctx.lineJoin = 'round';
-    layer.ctx.globalAlpha = state.opacity;
-    
-    // Set up clipping region to layer bounds
-    layer.ctx.save();
-    layer.ctx.beginPath();
-    layer.ctx.rect(0, 0, layer.canvas.width, layer.canvas.height);
-    layer.ctx.clip();
-    
-    // Convert workspace coordinates to layer-local coordinates for drawing
-    const layerStart = toLayerCoords(layer, state.startX, state.startY);
-    
-    if (state.tool === 'brush') {
-        layer.ctx.beginPath();
-        layer.ctx.moveTo(layerStart.x, layerStart.y);
-    } else if (state.tool === 'eraser') {
-        layer.ctx.globalCompositeOperation = 'destination-out';
-        layer.ctx.beginPath();
-        layer.ctx.moveTo(layerStart.x, layerStart.y);
+        case 'fill':
+            if (performFill(state, layer, pos)) {
+                api.composeLayers();
+                api.saveState();
+            }
+            return;
+        case 'text':
+            api.requestText(pos);
+            return;
+        case 'pointer': {
+            const index = pickLayerAt(state, pos.x, pos.y);
+            if (index >= 0 && index !== state.activeLayerIndex) api.selectLayer(index);
+            return;
+        }
+        case 'move': {
+            const active = state.layers[state.activeLayerIndex];
+            state.moveOrigin = { x: active.offsetX, y: active.offsetY };
+            state.moveDelta = { x: 0, y: 0 };
+            if (state.selection) {
+                // Lift the selected pixels off the layer into a floating canvas
+                state.floating = Selection.getSelectionCanvas(state, active);
+                state.floatingOrigin = { x: state.selection.x, y: state.selection.y };
+                state.moveSnapshot = cloneCanvas(active.canvas);
+                Selection.eraseSelectionArea(state, active);
+                api.composeLayers();
+                state.previewCtx.drawImage(state.floating,
+                    active.offsetX + state.floatingOrigin.x, active.offsetY + state.floatingOrigin.y);
+            }
+            state.isDrawing = true;
+            return;
+        }
+        case 'rectSelect':
+            state.isDrawing = true;
+            return;
+        case 'freeformSelect':
+            state.lassoPath = [{ x: pos.x, y: pos.y }];
+            state.isDrawing = true;
+            return;
+        case 'brush':
+        case 'eraser': {
+            const lp = toLayerCoords(layer, pos.x, pos.y);
+            state.strokeSnapshot = cloneCanvas(layer.canvas);
+            state.strokeCanvas = createCanvas(layer.canvas.width, layer.canvas.height);
+            state.strokePoints = [lp];
+            state.isDrawing = true;
+            renderStroke(state, layer);
+            api.composeLayers();
+            return;
+        }
+        default:
+            state.isDrawing = true;
     }
 }
 
-export function draw(state, e, composeLayers) {
+export function draw(state, e, api) {
+    if (!state.isDrawing) return;
     const pos = getMousePos(state, e);
-    
-    if (!state.isDrawing) {
-        // Clear preview for non-drawing state
-        state.previewCtx.clearRect(0, 0, state.previewCanvas.width, state.previewCanvas.height);
-        return;
-    }
-    
     const layer = state.layers[state.activeLayerIndex];
-    
-    // Convert workspace coordinates to layer-local coordinates for drawing
-    const layerPos = toLayerCoords(layer, pos.x, pos.y);
-    
+    state.lastEvent = e;
+
     switch (state.tool) {
         case 'brush':
-            layer.ctx.lineTo(layerPos.x, layerPos.y);
-            layer.ctx.stroke();
-            composeLayers();
+        case 'eraser': {
+            const lp = toLayerCoords(layer, pos.x, pos.y);
+            const last = state.strokePoints[state.strokePoints.length - 1];
+            if (Math.hypot(lp.x - last.x, lp.y - last.y) < 0.5) return;
+            state.strokePoints.push(lp);
+            renderStroke(state, layer);
+            api.composeLayers();
             break;
-            
-        case 'eraser':
-            layer.ctx.lineTo(layerPos.x, layerPos.y);
-            layer.ctx.stroke();
-            composeLayers();
+        }
+        case 'eyedropper': {
+            const color = sampleColor(state, pos);
+            if (color) api.pickColor(color, e.altKey);
             break;
-            
+        }
         case 'gradient':
-            // Draw gradient preview
-            state.previewCtx.clearRect(0, 0, state.previewCanvas.width, state.previewCanvas.height);
-            
-            const gradientType = state.gradientType || 'linear';
-            let gradient;
-            
-            if (gradientType === 'linear') {
-                gradient = state.previewCtx.createLinearGradient(
-                    state.startX, state.startY, pos.x, pos.y
-                );
-            } else {
-                const radius = Math.sqrt(
-                    Math.pow(pos.x - state.startX, 2) + 
-                    Math.pow(pos.y - state.startY, 2)
-                );
-                gradient = state.previewCtx.createRadialGradient(
-                    state.startX, state.startY, 0,
-                    state.startX, state.startY, radius
-                );
-            }
-            
-            gradient.addColorStop(0, state.foregroundColor);
-            gradient.addColorStop(1, state.backgroundColor);
-            
-            state.previewCtx.fillStyle = gradient;
-            state.previewCtx.globalAlpha = 0.7;
-            state.previewCtx.fillRect(0, 0, state.previewCanvas.width, state.previewCanvas.height);
-            state.previewCtx.globalAlpha = 1.0;
-            
-            // Draw line indicator
+            clearPreview(state);
+            state.previewCtx.save();
+            state.previewCtx.translate(layer.offsetX, layer.offsetY);
+            Selection.clipToSelection(state.previewCtx, state);
+            state.previewCtx.translate(-layer.offsetX, -layer.offsetY);
+            paintGradient(state.previewCtx, state, state.startX, state.startY, pos.x, pos.y,
+                state.previewCanvas.width, state.previewCanvas.height);
+            state.previewCtx.restore();
+            state.previewCtx.save();
             state.previewCtx.strokeStyle = '#ffffff';
-            state.previewCtx.lineWidth = 2;
-            state.previewCtx.setLineDash([5, 5]);
+            state.previewCtx.lineWidth = 1 / state.zoom;
+            state.previewCtx.setLineDash([5 / state.zoom, 5 / state.zoom]);
             state.previewCtx.beginPath();
             state.previewCtx.moveTo(state.startX, state.startY);
             state.previewCtx.lineTo(pos.x, pos.y);
             state.previewCtx.stroke();
-            state.previewCtx.setLineDash([]);
+            state.previewCtx.restore();
             break;
-            
         case 'rect':
         case 'circle':
         case 'line':
-            // Draw preview
-            state.previewCtx.clearRect(0, 0, state.previewCanvas.width, state.previewCanvas.height);
-            state.previewCtx.strokeStyle = state.foregroundColor;
-            state.previewCtx.lineWidth = state.brushSize;
-            state.previewCtx.globalAlpha = 0.7;
-            state.previewCtx.setLineDash([5, 5]);
-            
-            if (state.tool === 'rect') {
-                const width = pos.x - state.startX;
-                const height = pos.y - state.startY;
-                state.previewCtx.strokeRect(state.startX, state.startY, width, height);
-            } else if (state.tool === 'circle') {
-                const radius = Math.sqrt(
-                    Math.pow(pos.x - state.startX, 2) + 
-                    Math.pow(pos.y - state.startY, 2)
-                );
-                state.previewCtx.beginPath();
-                state.previewCtx.arc(state.startX, state.startY, radius, 0, 2 * Math.PI);
-                state.previewCtx.stroke();
-            } else if (state.tool === 'line') {
-                state.previewCtx.beginPath();
-                state.previewCtx.moveTo(state.startX, state.startY);
-                state.previewCtx.lineTo(pos.x, pos.y);
-                state.previewCtx.stroke();
-            }
-            
-            state.previewCtx.setLineDash([]);
-            state.previewCtx.globalAlpha = 1.0;
+            clearPreview(state);
+            state.previewCtx.save();
+            paintShape(state.previewCtx, state, state.startX, state.startY, pos.x, pos.y, e);
+            state.previewCtx.restore();
             break;
-            
-        case 'select':
-        case 'rectSelect':
-            // Draw selection preview
-            state.previewCtx.clearRect(0, 0, state.previewCanvas.width, state.previewCanvas.height);
-            state.previewCtx.strokeStyle = '#000000';
-            state.previewCtx.lineWidth = 1;
-            state.previewCtx.setLineDash([8, 8]);
-            
-            const width = pos.x - state.startX;
-            const height = pos.y - state.startY;
-            state.previewCtx.strokeRect(state.startX, state.startY, width, height);
-            
-            // Draw white outline for contrast
-            state.previewCtx.strokeStyle = '#ffffff';
-            state.previewCtx.lineDashOffset = 8;
-            state.previewCtx.strokeRect(state.startX, state.startY, width, height);
-            
-            state.previewCtx.setLineDash([]);
-            state.previewCtx.lineDashOffset = 0;
+        case 'rectSelect': {
+            clearPreview(state);
+            const end = constrainEnd('rect', state.startX, state.startY, pos.x, pos.y, e.shiftKey);
+            drawMarquee(state, ctx => ctx.rect(
+                Math.min(state.startX, end.x), Math.min(state.startY, end.y),
+                Math.abs(end.x - state.startX), Math.abs(end.y - state.startY)));
             break;
-            
+        }
         case 'freeformSelect':
-            // Add point to path
-            if (state.selectionPath) {
-                state.selectionPath.push({ x: pos.x, y: pos.y });
-                
-                // Draw path preview
-                state.previewCtx.clearRect(0, 0, state.previewCanvas.width, state.previewCanvas.height);
-                state.previewCtx.strokeStyle = '#000000';
-                state.previewCtx.lineWidth = 1;
-                state.previewCtx.setLineDash([4, 4]);
-                
-                state.previewCtx.beginPath();
-                state.previewCtx.moveTo(state.selectionPath[0].x, state.selectionPath[0].y);
-                for (let i = 1; i < state.selectionPath.length; i++) {
-                    state.previewCtx.lineTo(state.selectionPath[i].x, state.selectionPath[i].y);
-                }
-                state.previewCtx.stroke();
-                
-                // Draw white outline for contrast
-                state.previewCtx.strokeStyle = '#ffffff';
-                state.previewCtx.lineDashOffset = 4;
-                state.previewCtx.beginPath();
-                state.previewCtx.moveTo(state.selectionPath[0].x, state.selectionPath[0].y);
-                for (let i = 1; i < state.selectionPath.length; i++) {
-                    state.previewCtx.lineTo(state.selectionPath[i].x, state.selectionPath[i].y);
-                }
-                state.previewCtx.stroke();
-                
-                state.previewCtx.setLineDash([]);
-                state.previewCtx.lineDashOffset = 0;
+            state.lassoPath.push({ x: pos.x, y: pos.y });
+            clearPreview(state);
+            drawMarquee(state, ctx => {
+                ctx.moveTo(state.lassoPath[0].x, state.lassoPath[0].y);
+                for (const p of state.lassoPath) ctx.lineTo(p.x, p.y);
+            });
+            break;
+        case 'move': {
+            const dx = Math.round(pos.x - state.startX);
+            const dy = Math.round(pos.y - state.startY);
+            state.moveDelta = { x: dx, y: dy };
+            if (state.floating) {
+                clearPreview(state);
+                state.previewCtx.drawImage(state.floating,
+                    layer.offsetX + state.floatingOrigin.x + dx,
+                    layer.offsetY + state.floatingOrigin.y + dy);
+            } else {
+                layer.offsetX = state.moveOrigin.x + dx;
+                layer.offsetY = state.moveOrigin.y + dy;
+                api.composeLayers();
+                api.layerMoved();
             }
             break;
-            
-        case 'pointer':
-            // Pointer tool doesn't draw during drag
-            break;
-            
-        case 'move':
-            // Move the layer
-            state.moveOffsetX = pos.x - state.startX;
-            state.moveOffsetY = pos.y - state.startY;
-            
-            // Clear preview and show moved layer at its new offset position
-            state.previewCtx.clearRect(0, 0, state.previewCanvas.width, state.previewCanvas.height);
-            state.previewCtx.globalAlpha = 0.7;
-            const currentOffsetX = (layer.offsetX || 0) + state.moveOffsetX;
-            const currentOffsetY = (layer.offsetY || 0) + state.moveOffsetY;
-            state.previewCtx.drawImage(layer.canvas, currentOffsetX, currentOffsetY);
-            state.previewCtx.globalAlpha = 1.0;
-            break;
+        }
     }
 }
 
-export function stopDrawing(state, e, composeLayers, saveState) {
+function drawMarquee(state, trace) {
+    const ctx = state.previewCtx;
+    const lw = 1 / state.zoom;
+    ctx.save();
+    ctx.lineWidth = lw;
+    ctx.setLineDash([4 * lw, 4 * lw]);
+    for (const [color, offset] of [['#ffffff', 0], ['#000000', 4 * lw]]) {
+        ctx.strokeStyle = color;
+        ctx.lineDashOffset = offset;
+        ctx.beginPath();
+        trace(ctx);
+        ctx.stroke();
+    }
+    ctx.restore();
+}
+
+export function stopDrawing(state, e, api) {
     if (!state.isDrawing) return;
-    
-    const pos = getMousePos(state, e);
+    state.isDrawing = false;
     const layer = state.layers[state.activeLayerIndex];
-    
-    // Clear preview
-    state.previewCtx.clearRect(0, 0, state.previewCanvas.width, state.previewCanvas.height);
-    
+    const pos = e && e.clientX !== undefined ? getMousePos(state, e) : { x: state.startX, y: state.startY };
+    const evt = e || state.lastEvent || {};
+    clearPreview(state);
+
+    let changed = false;
+
     switch (state.tool) {
         case 'brush':
         case 'eraser':
-            // Restore context (clipping was set in startDrawing)
+            state.strokeSnapshot = null;
+            state.strokeCanvas = null;
+            state.strokePoints = null;
+            changed = true;
+            break;
+
+        case 'gradient': {
+            const a = toLayerCoords(layer, state.startX, state.startY);
+            const b = toLayerCoords(layer, pos.x, pos.y);
+            layer.ctx.save();
+            Selection.clipToSelection(layer.ctx, state);
+            paintGradient(layer.ctx, state, a.x, a.y, b.x, b.y, layer.canvas.width, layer.canvas.height);
             layer.ctx.restore();
+            changed = true;
             break;
-            
-        case 'gradient':
-            // Apply gradient to layer (use layer-local coordinates)
-            const gradientType = state.gradientType || 'linear';
-            let gradient;
-            
-            const layerStart = toLayerCoords(layer, state.startX, state.startY);
-            const layerEnd = toLayerCoords(layer, pos.x, pos.y);
-            
-            if (gradientType === 'linear') {
-                gradient = layer.ctx.createLinearGradient(
-                    layerStart.x, layerStart.y, layerEnd.x, layerEnd.y
-                );
-            } else {
-                const radius = Math.sqrt(
-                    Math.pow(layerEnd.x - layerStart.x, 2) + 
-                    Math.pow(layerEnd.y - layerStart.y, 2)
-                );
-                gradient = layer.ctx.createRadialGradient(
-                    layerStart.x, layerStart.y, 0,
-                    layerStart.x, layerStart.y, radius
-                );
-            }
-            
-            gradient.addColorStop(0, state.foregroundColor);
-            gradient.addColorStop(1, state.backgroundColor);
-            
-            layer.ctx.fillStyle = gradient;
-            layer.ctx.globalAlpha = state.opacity;
-            layer.ctx.fillRect(0, 0, layer.canvas.width, layer.canvas.height);
-            layer.ctx.globalAlpha = 1.0;
-            break;
-            
+        }
+
         case 'rect':
-            const layerStartRect = toLayerCoords(layer, state.startX, state.startY);
-            const layerPosRect = toLayerCoords(layer, pos.x, pos.y);
-            const width = layerPosRect.x - layerStartRect.x;
-            const height = layerPosRect.y - layerStartRect.y;
-            layer.ctx.save();
-            layer.ctx.beginPath();
-            layer.ctx.rect(0, 0, layer.canvas.width, layer.canvas.height);
-            layer.ctx.clip();
-            layer.ctx.strokeRect(layerStartRect.x, layerStartRect.y, width, height);
-            layer.ctx.restore();
-            break;
-            
         case 'circle':
-            const layerStartCircle = toLayerCoords(layer, state.startX, state.startY);
-            const layerPosCircle = toLayerCoords(layer, pos.x, pos.y);
-            const radius = Math.sqrt(
-                Math.pow(layerPosCircle.x - layerStartCircle.x, 2) + 
-                Math.pow(layerPosCircle.y - layerStartCircle.y, 2)
-            );
+        case 'line': {
+            const a = toLayerCoords(layer, state.startX, state.startY);
+            const b = toLayerCoords(layer, pos.x, pos.y);
+            if (a.x === b.x && a.y === b.y) break;
             layer.ctx.save();
-            layer.ctx.beginPath();
-            layer.ctx.rect(0, 0, layer.canvas.width, layer.canvas.height);
-            layer.ctx.clip();
-            layer.ctx.beginPath();
-            layer.ctx.arc(layerStartCircle.x, layerStartCircle.y, radius, 0, 2 * Math.PI);
-            layer.ctx.stroke();
+            Selection.clipToSelection(layer.ctx, state);
+            paintShape(layer.ctx, state, a.x, a.y, b.x, b.y, evt);
             layer.ctx.restore();
+            changed = true;
             break;
-            
-        case 'line':
-            const layerStartLine = toLayerCoords(layer, state.startX, state.startY);
-            const layerPosLine = toLayerCoords(layer, pos.x, pos.y);
-            layer.ctx.save();
-            layer.ctx.beginPath();
-            layer.ctx.rect(0, 0, layer.canvas.width, layer.canvas.height);
-            layer.ctx.clip();
-            layer.ctx.beginPath();
-            layer.ctx.moveTo(layerStartLine.x, layerStartLine.y);
-            layer.ctx.lineTo(layerPosLine.x, layerPosLine.y);
-            layer.ctx.stroke();
-            layer.ctx.restore();
-            break;
-            
-        case 'move':
-            // Apply the move to the layer or selection
-            if (state.selection) {
-                // Move only the selection - clip to layer bounds
-                if (state.moveOffsetX !== 0 || state.moveOffsetY !== 0) {
-                    const newX = state.selection.x + state.moveOffsetX;
-                    const newY = state.selection.y + state.moveOffsetY;
-                    
-                    // Clear the original selection area
-                    if (state.selectionType === 'rect') {
-                        layer.ctx.clearRect(state.selection.x, state.selection.y, state.selection.width, state.selection.height);
-                    } else if (state.selectionType === 'freeform' && state.selectionPath) {
-                        // Clear freeform selection area
-                        layer.ctx.save();
-                        layer.ctx.beginPath();
-                        layer.ctx.moveTo(state.selectionPath[0].x, state.selectionPath[0].y);
-                        for (let i = 1; i < state.selectionPath.length; i++) {
-                            layer.ctx.lineTo(state.selectionPath[i].x, state.selectionPath[i].y);
-                        }
-                        layer.ctx.closePath();
-                        layer.ctx.clip();
-                        layer.ctx.clearRect(state.selection.x, state.selection.y, state.selection.width, state.selection.height);
-                        layer.ctx.restore();
-                    }
-                    
-                    // Put the selection at new location (will clip to layer bounds)
-                    layer.ctx.putImageData(state.selection.imageData, newX, newY);
-                    
-                    // Update selection position
-                    state.selection.x = newX;
-                    state.selection.y = newY;
-                    
-                    // Clear selection path if it exists
-                    state.selectionPath = null;
+        }
+
+        case 'move': {
+            const { x: dx, y: dy } = state.moveDelta || { x: 0, y: 0 };
+            if (state.floating) {
+                if (dx === 0 && dy === 0) {
+                    layer.ctx.save();
+                    layer.ctx.globalCompositeOperation = 'copy';
+                    layer.ctx.drawImage(state.moveSnapshot, 0, 0);
+                    layer.ctx.restore();
+                } else {
+                    layer.ctx.drawImage(state.floating, state.floatingOrigin.x + dx, state.floatingOrigin.y + dy);
+                    Selection.translateSelection(state, dx, dy);
+                    Selection.refreshSelectionPixels(state);
+                    changed = true;
                 }
-            } else if (state.moveOffsetX !== 0 || state.moveOffsetY !== 0) {
-                // Move the entire layer by adjusting its offset position
-                // This preserves data even when moved outside workspace bounds
-                layer.offsetX = (layer.offsetX || 0) + state.moveOffsetX;
-                layer.offsetY = (layer.offsetY || 0) + state.moveOffsetY;
+                state.floating = null;
+                state.moveSnapshot = null;
+                api.selectionChanged();
+            } else {
+                changed = dx !== 0 || dy !== 0;
             }
             break;
-            
-        case 'select':
-        case 'rectSelect':
-            // Create rectangular selection (convert workspace coords to layer coords)
-            const layerStartSel = toLayerCoords(layer, state.startX, state.startY);
-            const layerPosSel = toLayerCoords(layer, pos.x, pos.y);
-            const selWidth = layerPosSel.x - layerStartSel.x;
-            const selHeight = layerPosSel.y - layerStartSel.y;
-            Selection.createRectSelection(state, layerStartSel.x, layerStartSel.y, selWidth, selHeight);
+        }
+
+        case 'rectSelect': {
+            const end = constrainEnd('rect', state.startX, state.startY, pos.x, pos.y, evt.shiftKey);
+            const a = toLayerCoords(layer, state.startX, state.startY);
+            const b = toLayerCoords(layer, end.x, end.y);
+            Selection.createRectSelection(state, a.x, a.y, b.x - a.x, b.y - a.y);
+            api.selectionChanged();
             break;
-            
+        }
+
         case 'freeformSelect':
-            // Complete freeform selection (convert workspace coords to layer coords)
-            if (state.selectionPath && state.selectionPath.length > 2) {
-                const layerPath = state.selectionPath.map(p => {
-                    const lp = toLayerCoords(layer, p.x, p.y);
-                    return { x: lp.x, y: lp.y };
-                });
-                Selection.createFreeformSelection(state, layerPath);
+            if (state.lassoPath && state.lassoPath.length > 2) {
+                Selection.createFreeformSelection(state, state.lassoPath.map(p => toLayerCoords(layer, p.x, p.y)));
+            } else {
+                Selection.clearSelection(state);
             }
-            break;
-            
-        case 'pointer':
-            // Pointer tool doesn't modify the canvas
+            state.lassoPath = null;
+            api.selectionChanged();
             break;
     }
-    
-    // Reset composite operation
-    layer.ctx.globalCompositeOperation = 'source-over';
-    layer.ctx.globalAlpha = 1.0;
-    
-    state.isDrawing = false;
-    composeLayers();
-    saveState();
+
+    api.composeLayers();
+    if (changed) api.saveState();
 }
 
-// Render text to the active layer
 export function renderText(state, text, x, y, composeLayers, saveState) {
-    // Trim and validate text input
-    const trimmedText = text ? text.trim() : '';
-    if (!state || !trimmedText || state.layers.length === 0) return;
-    
+    if (!state || !text || !text.trim() || state.layers.length === 0) return;
     const layer = state.layers[state.activeLayerIndex];
-    const layerPos = toLayerCoords(layer, x, y);
-    
-    // Validate font family against whitelist
+    const lp = toLayerCoords(layer, x, y);
     const fontFamily = ALLOWED_FONTS.includes(state.fontFamily) ? state.fontFamily : 'Arial';
-    
-    // Set font properties
-    layer.ctx.font = `${state.fontSize}px ${fontFamily}`;
+    const size = Math.max(1, Number(state.fontSize) || 24);
+    const style = `${state.fontItalic ? 'italic ' : ''}${state.fontBold ? 'bold ' : ''}`;
+
+    layer.ctx.save();
+    Selection.clipToSelection(layer.ctx, state);
+    layer.ctx.font = `${style}${size}px "${fontFamily}"`;
     layer.ctx.fillStyle = state.foregroundColor;
     layer.ctx.textBaseline = 'top';
     layer.ctx.globalAlpha = state.opacity;
-    
-    // Clip to layer bounds
-    layer.ctx.save();
-    layer.ctx.beginPath();
-    layer.ctx.rect(0, 0, layer.canvas.width, layer.canvas.height);
-    layer.ctx.clip();
-    
-    // Draw text
-    layer.ctx.fillText(trimmedText, layerPos.x, layerPos.y);
-    
+    text.split('\n').forEach((line, i) => {
+        layer.ctx.fillText(line, lp.x, lp.y + i * size * 1.2);
+    });
     layer.ctx.restore();
-    layer.ctx.globalAlpha = 1.0;
-    
+
     composeLayers();
-    // Save state after rendering text
-    if (saveState) {
-        saveState();
-    }
+    if (saveState) saveState();
 }
+
+export { SHAPE_TOOLS };

@@ -1,1340 +1,1387 @@
-// Import modules
-import { Image } from './js/constants.js';
-import { MIN_LAYER_DURATION, MULTI_FRAME_FORMATS } from './js/constants.js';
-import { globalState, createWorkspaceState } from './js/state.js';
-import * as LayersModule from './js/layers.js';
-import * as HistoryModule from './js/history.js';
-import * as UIModule from './js/ui.js';
-import * as DrawingModule from './js/drawing.js';
-import * as FileIOModule from './js/file-io.js';
-import * as EffectsModule from './js/effects.js';
-import * as SelectionModule from './js/selection.js';
+// Pura - main entry point: wires modules, workspaces, UI and input together
+import { MIN_LAYER_DURATION, MULTI_FRAME_FORMATS, OPENABLE_EXTENSIONS } from './js/constants.js';
+import { globalState, createWorkspaceState, SHARED_TOOL_SETTINGS } from './js/state.js';
+import * as Layers from './js/layers.js';
+import * as History from './js/history.js';
+import * as UI from './js/ui.js';
+import * as Drawing from './js/drawing.js';
+import * as FileIO from './js/file-io.js';
+import * as Effects from './js/effects.js';
+import * as Selection from './js/selection.js';
+import * as Metadata from './js/metadata.js';
 
-// Application state (points to active workspace)
 let state = null;
+let clipboard = null; // { canvas, x, y }
+let spaceHeld = false;
+let panning = null;
+let selectionAnimationId = null;
+let nudgeSaveTimer = null;
 
-// Initialize the application
+const ZOOM_STEPS = [0.05, 0.1, 0.25, 1 / 3, 0.5, 2 / 3, 1, 1.5, 2, 3, 4, 6, 8, 12, 16, 24, 32];
+const SIZE_TOOLS = ['brush', 'eraser'];
+
+const hasWorkspace = () => !!state && globalState.activeWorkspaceId !== 'start' && state.layers.length > 0;
+const activeLayer = () => state.layers[state.activeLayerIndex];
+const $ = id => document.getElementById(id);
+
+// ---------------------------------------------------------------------------
+// Initialisation
+// ---------------------------------------------------------------------------
+
 function init() {
-    // Create the start workspace
-    const canvas = document.getElementById('mainCanvas');
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    
-    const startState = createWorkspaceState(canvas, ctx);
+    const canvas = document.createElement('canvas');
+    const startState = createWorkspaceState(canvas, canvas.getContext('2d', { willReadFrequently: true }));
     globalState.workspaces.set('start', startState);
     state = startState;
-    
+
+    Metadata.initMetadata(() => state);
+    populateDynamicControls();
+    disableUnsupportedEncoders();
     setupEventListeners();
-    restoreUIState();
+    UI.restoreUIState();
+    setTool(state.tool);
     updateTabBar();
-    
-    // Show start screen
     showStartScreen();
 }
 
-// Workspace Management
+function populateDynamicControls() {
+    const blend = $('layerBlendMode');
+    for (const [value, label] of Layers.BLEND_MODES) {
+        blend.add(new Option(label, value));
+    }
+
+    const effectButtons = $('effectButtons');
+    const addButton = (label, onClick) => {
+        const btn = document.createElement('button');
+        btn.className = 'tool-btn';
+        btn.textContent = label;
+        btn.addEventListener('click', () => { if (hasWorkspace()) onClick(); });
+        effectButtons.appendChild(btn);
+    };
+    for (const [key, effect] of Object.entries(Effects.INSTANT_EFFECTS)) {
+        addButton(effect.label, () => runSafely(() => Effects.applyInstantEffect(state, key, composeLayers, saveState)));
+    }
+    for (const [key, effect] of Object.entries(Effects.EFFECTS)) {
+        addButton(`${effect.label}…`, () => {
+            Effects.showEffectModal(state, key);
+            Effects.updateEffectPreview(composeLayers);
+        });
+    }
+}
+
+// AVIF/HEIC encoding relies on the browser's canvas encoder, which most browsers lack
+function disableUnsupportedEncoders() {
+    const probe = document.createElement('canvas');
+    probe.width = probe.height = 1;
+    for (const format of ['avif', 'heic']) {
+        probe.toBlob((blob) => {
+            if (blob?.type === `image/${format}`) return;
+            const option = document.querySelector(`#saveFormat option[value="${format}"]`);
+            option.disabled = true;
+            option.textContent += ' – not supported by this browser';
+        }, `image/${format}`);
+    }
+}
+
+function runSafely(fn) {
+    try {
+        fn();
+    } catch (error) {
+        console.error(error);
+        UI.toast(error.message, 'error');
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Workspaces
+// ---------------------------------------------------------------------------
+
 function showStartScreen() {
-    document.getElementById('startScreen').style.display = 'flex';
-    document.getElementById('canvasWrapper').style.display = 'none';
+    $('startScreen').style.display = 'flex';
+    $('canvasWrapper').style.display = 'none';
+    document.body.classList.add('no-workspace');
 }
 
 function hideStartScreen() {
-    document.getElementById('startScreen').style.display = 'none';
-    document.getElementById('canvasWrapper').style.display = 'block';
+    $('startScreen').style.display = 'none';
+    $('canvasWrapper').style.display = 'block';
+    document.body.classList.remove('no-workspace');
+}
+
+function makeOverlay(width, height, className) {
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    canvas.className = `ws-canvas overlay-canvas ${className}`;
+    return canvas;
 }
 
 function createWorkspace(name, width = 800, height = 600, bgColor = '#FFFFFF') {
     const workspaceId = `workspace-${globalState.nextWorkspaceId++}`;
-    
-    const canvas = document.getElementById('mainCanvas');
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    
-    // Set canvas size
+
+    const canvas = document.createElement('canvas');
+    canvas.className = 'ws-canvas main-canvas';
     canvas.width = width;
     canvas.height = height;
-    
-    // Create workspace state
-    const workspaceState = createWorkspaceState(canvas, ctx);
-    
-    // Create preview canvas overlay
-    workspaceState.previewCanvas = document.createElement('canvas');
-    workspaceState.previewCanvas.width = width;
-    workspaceState.previewCanvas.height = height;
-    workspaceState.previewCanvas.style.position = 'absolute';
-    workspaceState.previewCanvas.style.pointerEvents = 'none';
-    workspaceState.previewCanvas.style.top = '0';
-    workspaceState.previewCanvas.style.left = '0';
-    workspaceState.previewCtx = workspaceState.previewCanvas.getContext('2d', { willReadFrequently: true });
-    
-    // Add preview canvas to canvas wrapper
-    const canvasWrapper = document.getElementById('canvasWrapper');
-    canvasWrapper.style.position = 'relative';
-    
-    // Remove old preview canvas if exists
-    const oldPreview = canvasWrapper.querySelector('canvas:not(#mainCanvas)');
-    if (oldPreview) {
-        oldPreview.remove();
-    }
-    canvasWrapper.appendChild(workspaceState.previewCanvas);
-    
-    // Create initial background layer
-    workspaceState.layers.push(createLayerObject(workspaceState, 'Background', true));
-    workspaceState.activeLayerIndex = 0;
-    fillLayerInWorkspace(workspaceState, 0, bgColor);
-    
-    // Store workspace
-    globalState.workspaces.set(workspaceId, workspaceState);
-    
-    // Switch to new workspace
+
+    const ws = createWorkspaceState(canvas, canvas.getContext('2d', { willReadFrequently: true }));
+    ws.name = name;
+    ws.previewCanvas = makeOverlay(width, height, 'preview-canvas');
+    ws.previewCtx = ws.previewCanvas.getContext('2d', { willReadFrequently: true });
+    ws.selectionCanvas = makeOverlay(width, height, 'selection-canvas');
+    ws.selectionCtx = ws.selectionCanvas.getContext('2d');
+
+    ws.layers.push(Layers.createLayerObject(ws, 'Background', true));
+    Layers.fillLayerInWorkspace(ws, 0, bgColor);
+
+    globalState.workspaces.set(workspaceId, ws);
     switchWorkspace(workspaceId);
-    
-    // Update UI
-    updateLayersPanel();
-    composeLayers();
     saveState();
-    updateUI();
-    applyZoom(); // Initialize zoom display
-    
-    // Update tab bar
-    updateTabBar();
-    
-    // Hide start screen
-    hideStartScreen();
-    
+    ws.dirty = false;
+    fitToScreen(true);
     return workspaceId;
 }
 
 function switchWorkspace(workspaceId) {
-    if (!globalState.workspaces.has(workspaceId)) {
-        console.error('Workspace not found:', workspaceId);
-        return;
+    const next = globalState.workspaces.get(workspaceId);
+    if (!next) return;
+    if (state?.isDrawing) Drawing.stopDrawing(state, null, drawingApi());
+
+    // Tool settings follow the user across tabs
+    if (state && state !== next) {
+        for (const key of SHARED_TOOL_SETTINGS) next[key] = state[key];
     }
-    
-    // Save current state reference
-    const oldState = state;
-    
-    // Switch active workspace
+
     globalState.activeWorkspaceId = workspaceId;
-    state = globalState.workspaces.get(workspaceId);
-    
+    state = next;
+
+    const wrapper = $('canvasWrapper');
+    wrapper.querySelectorAll('.ws-canvas').forEach(c => c.remove());
+
     if (workspaceId === 'start') {
         showStartScreen();
-        // Clear layers panel for start tab
-        const layersPanel = document.getElementById('layersPanel');
-        layersPanel.innerHTML = '';
+        $('layersPanel').innerHTML = '';
     } else {
         hideStartScreen();
-        
-        // Restore canvas size
-        const canvas = document.getElementById('mainCanvas');
-        canvas.width = state.canvas.width;
-        canvas.height = state.canvas.height;
-        
-        // Update preview canvas
-        const canvasWrapper = document.getElementById('canvasWrapper');
-        const oldPreview = canvasWrapper.querySelector('canvas:not(#mainCanvas)');
-        if (oldPreview) {
-            oldPreview.remove();
-        }
-        if (state.previewCanvas) {
-            canvasWrapper.appendChild(state.previewCanvas);
-        }
-        
-        // Restore layers and UI
-        updateLayersPanel();
-        composeLayers();
-        updateUI();
-        applyZoom(); // Apply zoom when switching workspace
-        
-        // Update metadata table if we have state
-        if (state && state.metadata) {
-            updateMetadataTable();
-        }
+        wrapper.prepend(state.canvas, state.previewCanvas, state.selectionCanvas);
+        refresh();
+        applyZoom();
+        Metadata.updateMetadataTable();
+        if (state.selection) startSelectionAnimation();
     }
-    
     updateTabBar();
+    updateStatus();
 }
 
 function closeWorkspace(workspaceId) {
-    if (workspaceId === 'start') {
-        return; // Can't close start workspace
-    }
-    
-    if (!globalState.workspaces.has(workspaceId)) {
-        return;
-    }
-    
-    // Remove workspace
+    if (workspaceId === 'start' || !globalState.workspaces.has(workspaceId)) return;
+    const ws = globalState.workspaces.get(workspaceId);
+    if (ws.dirty && !confirm(`Close "${ws.name}"? Unsaved changes will be lost.`)) return;
+
+    const ids = Array.from(globalState.workspaces.keys());
+    const index = ids.indexOf(workspaceId);
     globalState.workspaces.delete(workspaceId);
-    
-    // If closing active workspace, switch to another one
+
     if (globalState.activeWorkspaceId === workspaceId) {
-        // Find another workspace to switch to
-        const workspaceIds = Array.from(globalState.workspaces.keys());
-        const nextWorkspaceId = workspaceIds[workspaceIds.length - 1] || 'start';
-        switchWorkspace(nextWorkspaceId);
+        const remaining = Array.from(globalState.workspaces.keys());
+        switchWorkspace(remaining[Math.min(index, remaining.length - 1)] || 'start');
     }
-    
     updateTabBar();
 }
 
 function updateTabBar() {
-    const tabBar = document.getElementById('tabBar');
+    const tabBar = $('tabBar');
     tabBar.innerHTML = '';
-    
-    // Add start tab
-    const startTab = document.createElement('div');
-    startTab.className = 'tab start-tab' + (globalState.activeWorkspaceId === 'start' ? ' active' : '');
-    startTab.dataset.tabId = 'start';
-    
-    const startName = document.createElement('span');
-    startName.className = 'tab-name';
-    startName.textContent = 'Start';
-    
-    startTab.appendChild(startName);
-    startTab.addEventListener('click', () => switchWorkspace('start'));
-    tabBar.appendChild(startTab);
-    
-    // Add workspace tabs
-    for (const [workspaceId, workspace] of globalState.workspaces.entries()) {
-        if (workspaceId === 'start') continue;
-        
+
+    for (const [workspaceId, ws] of globalState.workspaces.entries()) {
+        const isStart = workspaceId === 'start';
         const tab = document.createElement('div');
-        tab.className = 'tab' + (globalState.activeWorkspaceId === workspaceId ? ' active' : '');
+        tab.className = 'tab' + (isStart ? ' start-tab' : '') + (globalState.activeWorkspaceId === workspaceId ? ' active' : '');
         tab.dataset.tabId = workspaceId;
-        
+        tab.title = isStart ? 'Start' : `${ws.name} (${ws.canvas.width} × ${ws.canvas.height})`;
+
         const tabName = document.createElement('span');
         tabName.className = 'tab-name';
-        tabName.textContent = workspace.metadata.title || `Workspace ${workspaceId.replace('workspace-', '')}`;
-        
-        const closeBtn = document.createElement('button');
-        closeBtn.className = 'tab-close';
-        closeBtn.textContent = '×';
-        closeBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            if (confirm('Close this workspace? Any unsaved changes will be lost.')) {
-                closeWorkspace(workspaceId);
-            }
-        });
-        
+        tabName.textContent = isStart ? 'Start' : `${ws.dirty ? '• ' : ''}${ws.name}`;
         tab.appendChild(tabName);
-        tab.appendChild(closeBtn);
+
+        if (!isStart) {
+            const closeBtn = document.createElement('button');
+            closeBtn.className = 'tab-close';
+            closeBtn.textContent = '×';
+            closeBtn.title = 'Close';
+            closeBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                closeWorkspace(workspaceId);
+            });
+            tab.appendChild(closeBtn);
+            tab.addEventListener('auxclick', (e) => { if (e.button === 1) closeWorkspace(workspaceId); });
+        }
         tab.addEventListener('click', () => switchWorkspace(workspaceId));
-        
         tabBar.appendChild(tab);
+    }
+
+    document.title = hasWorkspace() ? `${state.dirty ? '• ' : ''}${state.name} – Pura` : 'Pura - Free Online Image Editor';
+}
+
+// ---------------------------------------------------------------------------
+// Rendering & history
+// ---------------------------------------------------------------------------
+
+function syncOverlaySize() {
+    for (const overlay of [state.previewCanvas, state.selectionCanvas]) {
+        if (overlay && (overlay.width !== state.canvas.width || overlay.height !== state.canvas.height)) {
+            overlay.width = state.canvas.width;
+            overlay.height = state.canvas.height;
+        }
     }
 }
 
-// Layer Management - using modules
-function createLayerObject(workspaceState, name, isBackground = false) {
-    return LayersModule.createLayerObject(workspaceState, name, isBackground);
+function composeLayers() {
+    if (!hasWorkspace()) return;
+    Layers.composeLayers(state);
+    updateLayerBounds();
 }
 
-function fillLayerInWorkspace(workspaceState, layerIndex, color) {
-    LayersModule.fillLayerInWorkspace(workspaceState, layerIndex, color);
-}
-
-function createLayer(name = 'Layer', isBackground = false) {
-    const layer = LayersModule.createLayer(state, name, isBackground);
-    updateLayersPanel();
+// Full refresh after structural changes (layers added, canvas resized, undo...)
+function refresh() {
+    if (!hasWorkspace()) return;
+    syncOverlaySize();
     composeLayers();
-    return layer;
+    updateLayersPanel();
+    applyZoom();
+    UI.updateUI(state);
+    updateStatus();
 }
 
-function fillLayer(layerIndex, color) {
-    LayersModule.fillLayer(state, layerIndex, color);
+function saveState() {
+    if (!hasWorkspace()) return;
+    const wasDirty = state.dirty;
+    History.saveState(state, UI.updateUI);
+    updateThumbnails();
+    if (wasDirty !== state.dirty) updateTabBar();
 }
 
-function deleteLayer(layerIndex) {
-    if (LayersModule.deleteLayer(state, layerIndex)) {
+function afterHistoryChange() {
+    stopSelectionAnimation();
+    state.selectionCtx?.clearRect(0, 0, state.selectionCanvas.width, state.selectionCanvas.height);
+    refresh();
+    updateTabBar();
+}
+
+function undo() {
+    if (hasWorkspace() && History.undo(state)) afterHistoryChange();
+}
+
+function redo() {
+    if (hasWorkspace() && History.redo(state)) afterHistoryChange();
+}
+
+function updateLayerBounds() {
+    const el = $('layerBounds');
+    const layer = hasWorkspace() ? activeLayer() : null;
+    const matchesCanvas = layer && layer.offsetX === 0 && layer.offsetY === 0 &&
+        layer.canvas.width === state.canvas.width && layer.canvas.height === state.canvas.height;
+    if (!layer || matchesCanvas) {
+        el.style.display = 'none';
+        return;
+    }
+    const z = state.zoom;
+    el.style.display = 'block';
+    el.style.left = `${layer.offsetX * z}px`;
+    el.style.top = `${layer.offsetY * z}px`;
+    el.style.width = `${layer.canvas.width * z}px`;
+    el.style.height = `${layer.canvas.height * z}px`;
+}
+
+function updateStatus(pos) {
+    if (!hasWorkspace()) {
+        $('statusPos').textContent = '–';
+        $('statusSize').textContent = '–';
+        $('statusSelection').textContent = '';
+        $('statusLayer').textContent = '';
+        return;
+    }
+    if (pos) $('statusPos').textContent = `${Math.floor(pos.x)}, ${Math.floor(pos.y)}`;
+    $('statusSize').textContent = `${state.canvas.width} × ${state.canvas.height} px`;
+    const s = state.selection;
+    $('statusSelection').textContent = s ? `Selection ${s.width} × ${s.height} @ ${s.x}, ${s.y}` : '';
+    const layer = activeLayer();
+    $('statusLayer').textContent = `Layer: ${layer.name}`;
+}
+
+// ---------------------------------------------------------------------------
+// Layers panel
+// ---------------------------------------------------------------------------
+
+function updateLayersPanel() {
+    const panel = $('layersPanel');
+    panel.innerHTML = '';
+    if (!hasWorkspace()) return;
+
+    state.layers.forEach((layer, index) => {
+        const item = document.createElement('div');
+        item.className = 'layer-item' + (index === state.activeLayerIndex ? ' active' : '') + (layer.visible ? '' : ' hidden-layer');
+        item.dataset.layerIndex = index;
+        item.draggable = true;
+
+        const eye = document.createElement('button');
+        eye.className = 'layer-visibility';
+        eye.innerHTML = `<svg class="icon"><use href="#i-${layer.visible ? 'eye' : 'eye-off'}"/></svg>`;
+        eye.title = layer.visible ? 'Hide layer' : 'Show layer';
+        eye.addEventListener('click', (e) => {
+            e.stopPropagation();
+            Layers.toggleLayerVisibility(state, index);
+            composeLayers();
+            updateLayersPanel();
+            saveState();
+        });
+
+        const thumb = document.createElement('canvas');
+        thumb.className = 'layer-thumb';
+        thumb.width = 40;
+        thumb.height = 30;
+        Layers.drawThumbnail(layer, thumb);
+
+        const info = document.createElement('div');
+        info.className = 'layer-info';
+
+        const name = document.createElement('span');
+        name.className = 'layer-name';
+        name.textContent = layer.name;
+        name.title = 'Double-click to rename';
+        name.addEventListener('dblclick', (e) => {
+            e.stopPropagation();
+            startRename(name, index);
+        });
+
+        const meta = document.createElement('span');
+        meta.className = 'layer-meta';
+        const blendLabel = Layers.BLEND_MODES.find(([v]) => v === layer.blendMode)?.[1] || 'Normal';
+        const opacity = document.createElement('span');
+        opacity.textContent = `${Math.round(layer.opacity * 100)}%${blendLabel !== 'Normal' ? ' · ' + blendLabel : ''}`;
+        const duration = document.createElement('span');
+        duration.className = 'layer-duration';
+        duration.textContent = `${layer.duration}ms`;
+        duration.title = 'Frame duration – click to edit';
+        duration.addEventListener('click', (e) => {
+            e.stopPropagation();
+            showLayerDurationModal(index);
+        });
+        meta.append(opacity, duration);
+
+        info.append(name, meta);
+        item.append(eye, thumb, info);
+
+        item.addEventListener('click', () => setActiveLayer(index));
+        item.addEventListener('dragstart', (e) => {
+            e.dataTransfer.setData('application/x-pura-layer', String(index));
+            e.dataTransfer.effectAllowed = 'move';
+            item.classList.add('dragging');
+        });
+        item.addEventListener('dragend', () => item.classList.remove('dragging'));
+        item.addEventListener('dragover', (e) => {
+            if (e.dataTransfer.types.includes('application/x-pura-layer')) {
+                e.preventDefault();
+                item.classList.add('drag-over');
+            }
+        });
+        item.addEventListener('dragleave', () => item.classList.remove('drag-over'));
+        item.addEventListener('drop', (e) => {
+            const from = e.dataTransfer.getData('application/x-pura-layer');
+            if (from === '') return;
+            e.preventDefault();
+            e.stopPropagation();
+            if (Layers.moveLayer(state, Number(from), index)) {
+                refresh();
+                saveState();
+            }
+        });
+
+        panel.appendChild(item);
+    });
+
+    const layer = activeLayer();
+    $('layerBlendMode').value = layer.blendMode || 'source-over';
+    $('layerOpacity').value = Math.round(layer.opacity * 100);
+    $('layerOpacityValue').textContent = Math.round(layer.opacity * 100);
+    $('layerUpBtn').disabled = state.activeLayerIndex >= state.layers.length - 1;
+    $('layerDownBtn').disabled = state.activeLayerIndex <= 0;
+    $('mergeLayersBtn').disabled = state.activeLayerIndex <= 0;
+    $('deleteLayerBtn').disabled = state.layers.length <= 1;
+    $('flattenBtn').disabled = state.layers.length <= 1;
+}
+
+function updateThumbnails() {
+    document.querySelectorAll('#layersPanel .layer-item').forEach(item => {
+        const layer = state.layers[Number(item.dataset.layerIndex)];
+        const thumb = item.querySelector('.layer-thumb');
+        if (layer && thumb) Layers.drawThumbnail(layer, thumb);
+    });
+}
+
+function startRename(nameEl, index) {
+    const input = document.createElement('input');
+    input.className = 'layer-rename';
+    input.value = state.layers[index].name;
+    nameEl.replaceWith(input);
+    input.focus();
+    input.select();
+    let done = false;
+    const finish = (commit) => {
+        if (done) return;
+        done = true;
+        const value = input.value.trim();
+        if (commit && value && value !== state.layers[index].name) {
+            state.layers[index].name = value;
+            saveState();
+        }
         updateLayersPanel();
-        composeLayers();
+        updateStatus();
+    };
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') finish(true);
+        if (e.key === 'Escape') finish(false);
+        e.stopPropagation();
+    });
+    input.addEventListener('blur', () => finish(true));
+    input.addEventListener('click', e => e.stopPropagation());
+}
+
+function setActiveLayer(index) {
+    if (index === state.activeLayerIndex) return;
+    Layers.setActiveLayer(state, index);
+    deselect();
+    updateLayersPanel();
+    updateLayerBounds();
+    updateStatus();
+}
+
+function layerAction(fn) {
+    if (!hasWorkspace()) return;
+    if (fn() !== false) {
+        deselect();
+        refresh();
         saveState();
     }
 }
 
-function toggleLayerVisibility(layerIndex) {
-    LayersModule.toggleLayerVisibility(state, layerIndex);
-    composeLayers();
-}
-
-function setActiveLayer(layerIndex) {
-    LayersModule.setActiveLayer(state, layerIndex);
-    updateLayersPanel();
-}
-
-function composeLayers() {
-    if (state) LayersModule.composeLayers(state);
-}
-
-function updateLayersPanel() {
-    const panel = document.getElementById('layersPanel');
-    panel.innerHTML = '';
-    
-    state.layers.forEach((layer, index) => {
-        const layerItem = document.createElement('div');
-        layerItem.className = 'layer-item' + (index === state.activeLayerIndex ? ' active' : '');
-        layerItem.dataset.layerId = index;
-        
-        const checkbox = document.createElement('input');
-        checkbox.type = 'checkbox';
-        checkbox.checked = layer.visible;
-        checkbox.className = 'layer-visibility';
-        checkbox.addEventListener('click', (e) => {
-            e.stopPropagation();
-            toggleLayerVisibility(index);
-        });
-        
-        const nameSpan = document.createElement('span');
-        nameSpan.className = 'layer-name';
-        nameSpan.textContent = layer.name;
-        
-        const opacitySpan = document.createElement('span');
-        opacitySpan.className = 'layer-opacity';
-        opacitySpan.textContent = `${Math.round(layer.opacity * 100)}%`;
-        opacitySpan.title = 'Click to edit opacity';
-        opacitySpan.addEventListener('click', (e) => {
-            e.stopPropagation();
-            showLayerOpacityModal(index);
-        });
-        
-        const durationSpan = document.createElement('span');
-        durationSpan.className = 'layer-duration';
-        durationSpan.textContent = `${layer.duration}ms`;
-        durationSpan.title = 'Click to edit duration';
-        durationSpan.addEventListener('click', (e) => {
-            e.stopPropagation();
-            showLayerDurationModal(index);
-        });
-        
-        const deleteBtn = document.createElement('button');
-        deleteBtn.className = 'layer-delete';
-        deleteBtn.textContent = '×';
-        deleteBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            deleteLayer(index);
-        });
-        
-        layerItem.appendChild(checkbox);
-        layerItem.appendChild(nameSpan);
-        layerItem.appendChild(opacitySpan);
-        layerItem.appendChild(durationSpan);
-        if (!layer.isBackground || state.layers.length > 1) {
-            layerItem.appendChild(deleteBtn);
-        }
-        
-        layerItem.addEventListener('click', () => setActiveLayer(index));
-        
-        panel.appendChild(layerItem);
-    });
-}
-
-// Drawing Functions
-// Drawing - using modules
-function getMousePos(e) {
-    return DrawingModule.getMousePos(state, e);
-}
-
-function startDrawing(e) {
-    if (!state) return;
-    
-    // For text tool, open modal instead of drawing
-    if (state.tool === 'text') {
-        const pos = DrawingModule.getMousePos(state, e);
-        state.pendingTextPosition = { x: pos.x, y: pos.y };
-        document.getElementById('textInput').value = '';
-        UIModule.showModal('textModal');
-        document.getElementById('textInput').focus();
+const addLayer = () => layerAction(() => Layers.createLayer(state));
+const duplicateLayer = () => layerAction(() => Layers.duplicateLayer(state, state.activeLayerIndex));
+const moveLayerUp = () => layerAction(() => Layers.moveLayer(state, state.activeLayerIndex, state.activeLayerIndex + 1));
+const moveLayerDown = () => layerAction(() => Layers.moveLayer(state, state.activeLayerIndex, state.activeLayerIndex - 1));
+const mergeDown = () => layerAction(() => Layers.mergeDown(state));
+const flatten = () => layerAction(() => state.layers.length > 1 && (Layers.flattenLayers(state), true));
+function deleteActiveLayer() {
+    if (!hasWorkspace()) return;
+    if (state.layers.length <= 1) {
+        UI.toast('An image needs at least one layer');
         return;
     }
-    
-    DrawingModule.startDrawing(state, e, composeLayers);
+    layerAction(() => Layers.deleteLayer(state, state.activeLayerIndex));
 }
 
-function draw(e) {
-    DrawingModule.draw(state, e, composeLayers);
+function showLayerDurationModal(index) {
+    state.tempLayerIndex = index;
+    $('layerDurationInput').value = state.layers[index].duration;
+    $('layerDurationAll').checked = false;
+    UI.showModal('layerDurationModal');
 }
 
-function stopDrawing(e) {
-    DrawingModule.stopDrawing(state, e, composeLayers, saveState);
-    
-    // Start selection animation if a selection was created
-    if (state && state.selection) {
-        startSelectionAnimation();
+function applyLayerDuration() {
+    const duration = parseInt($('layerDurationInput').value);
+    if (!(duration >= MIN_LAYER_DURATION)) {
+        UI.toast(`Duration must be at least ${MIN_LAYER_DURATION} ms`, 'error');
+        return;
+    }
+    const targets = $('layerDurationAll').checked ? state.layers : [state.layers[state.tempLayerIndex]];
+    targets.forEach(layer => { layer.duration = duration; });
+    updateLayersPanel();
+    saveState();
+    UI.closeModal('layerDurationModal');
+}
+
+// ---------------------------------------------------------------------------
+// Tools
+// ---------------------------------------------------------------------------
+
+function setTool(tool) {
+    if (state.isDrawing) return;
+    state.tool = tool;
+    document.querySelectorAll('[data-tool]').forEach(b => b.classList.toggle('active', b.dataset.tool === tool));
+    document.querySelectorAll('.tool-options-group[data-for]').forEach(group => {
+        group.style.display = group.dataset.for.split(' ').includes(tool) ? 'flex' : 'none';
+    });
+    const button = document.querySelector(`[data-tool="${tool}"]`);
+    $('optionsToolName').textContent = button ? button.title.split(' (')[0] : tool;
+    $('canvasWrapper').dataset.tool = tool;
+    const hints = {
+        pointer: 'Click a pixel to activate the layer it belongs to',
+        move: 'Drag to move the layer (or the selection). Arrow keys nudge.',
+        rectSelect: 'Drag to select. Shift = square. Click to deselect.',
+        freeformSelect: 'Drag a freehand outline to select',
+        brush: 'Alt+click to pick a colour. [ and ] change size.',
+        eraser: '[ and ] change size',
+        fill: 'Click to flood fill. Alt+click to pick a colour.',
+        gradient: 'Drag from foreground to background colour',
+        rect: 'Shift = square, Alt = from centre',
+        circle: 'Shift = circle, Alt = from centre',
+        line: 'Shift snaps to 45°',
+        text: 'Click where the text should start',
+        eyedropper: 'Click to pick foreground, Alt+click for background'
+    };
+    $('statusHint').textContent = hints[tool] || '';
+}
+
+function syncToolSettingsUI() {
+    $('brushSize').value = state.brushSize;
+    $('brushSizeValue').textContent = state.brushSize;
+    $('foregroundColor').value = state.foregroundColor.toLowerCase();
+    $('backgroundColor').value = state.backgroundColor.toLowerCase();
+}
+
+function setColor(hex, background = false) {
+    state[background ? 'backgroundColor' : 'foregroundColor'] = hex;
+    syncToolSettingsUI();
+}
+
+function swapColors() {
+    [state.foregroundColor, state.backgroundColor] = [state.backgroundColor, state.foregroundColor];
+    syncToolSettingsUI();
+}
+
+function resetColors() {
+    state.foregroundColor = '#000000';
+    state.backgroundColor = '#ffffff';
+    syncToolSettingsUI();
+}
+
+function setBrushSize(size) {
+    state.brushSize = Math.max(1, Math.min(200, Math.round(size)));
+    syncToolSettingsUI();
+    updateBrushCursor();
+}
+
+function drawingApi() {
+    return {
+        composeLayers,
+        saveState,
+        pickColor: setColor,
+        selectLayer: setActiveLayer,
+        selectionChanged: () => {
+            if (state.selection) startSelectionAnimation();
+            else stopSelectionAnimation();
+            updateStatus();
+        },
+        requestText: (pos) => {
+            state.pendingTextPosition = pos;
+            $('textInput').value = '';
+            UI.showModal('textModal');
+        },
+        layerMoved: () => updateStatus()
+    };
+}
+
+// ---------------------------------------------------------------------------
+// Pointer input on the canvas
+// ---------------------------------------------------------------------------
+
+let lastPointer = null;
+
+function onPointerDown(e) {
+    if (!hasWorkspace()) return;
+    const container = $('canvasContainer');
+    if (e.button === 1 || (e.button === 0 && spaceHeld)) {
+        e.preventDefault();
+        panning = { x: e.clientX, y: e.clientY, left: container.scrollLeft, top: container.scrollTop };
+        $('canvasWrapper').setPointerCapture(e.pointerId);
+        $('canvasWrapper').classList.add('panning');
+        return;
+    }
+    if (e.button !== 0) return;
+    e.preventDefault();
+    $('canvasWrapper').setPointerCapture(e.pointerId);
+    Drawing.startDrawing(state, e, drawingApi());
+}
+
+function onPointerMove(e) {
+    if (!hasWorkspace()) return;
+    lastPointer = { clientX: e.clientX, clientY: e.clientY };
+    if (panning) {
+        const container = $('canvasContainer');
+        container.scrollLeft = panning.left - (e.clientX - panning.x);
+        container.scrollTop = panning.top - (e.clientY - panning.y);
+        return;
+    }
+    const pos = Drawing.getMousePos(state, e);
+    updateStatus(pos);
+    updateBrushCursor();
+    // Coalesced events give smoother strokes on fast pointer movement
+    const events = state.isDrawing && e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
+    for (const ev of (events.length ? events : [e])) {
+        Drawing.draw(state, ev, drawingApi());
     }
 }
 
-// File Operations - using modules
-async function openImage() {
-    FileIOModule.openImage(createWorkspace, createLayerObject, globalState, mergeMetadata, updateLayersPanel, updateMetadataTable, composeLayers, saveState);
-}
-
-async function handleFileUpload(e) {
-    FileIOModule.handleFileUpload(e, createWorkspace, createLayerObject, globalState, mergeMetadata, updateLayersPanel, updateMetadataTable, composeLayers, saveState);
-}
-
-async function importAsLayer() {
-    FileIOModule.importAsLayer(globalState);
-}
-
-async function handleImportLayer(e) {
-    FileIOModule.handleImportLayer(e, globalState, createLayer, composeLayers, saveState);
-}
-
-async function saveImage() {
-    FileIOModule.saveImage();
-}
-
-async function applySaveImage() {
-    FileIOModule.applySaveImage(state, hasMetadata, cleanMetadataForExport, closeModal);
-}
-
-function createNewImage() {
-    const modal = document.getElementById('newImageModal');
-    modal.classList.add('active');
-}
-
-function applyNewImage() {
-    const width = parseInt(document.getElementById('newWidth').value);
-    const height = parseInt(document.getElementById('newHeight').value);
-    const bgColor = document.getElementById('newBgColor').value;
-    
-    if (width > 0 && height > 0) {
-        // Create new workspace
-        createWorkspace('New Image', width, height, bgColor);
+function onPointerUp(e) {
+    if (panning) {
+        panning = null;
+        $('canvasWrapper').classList.remove('panning');
+        return;
     }
-    
-    closeModal('newImageModal');
+    if (!hasWorkspace() || !state.isDrawing) return;
+    Drawing.stopDrawing(state, e, drawingApi());
+    updateStatus();
 }
 
-// Transform Operations - using modules
-async function resizeLayer() {
-    EffectsModule.resizeLayer(state);
+function updateBrushCursor() {
+    const cursor = $('brushCursor');
+    if (!hasWorkspace() || !lastPointer || !SIZE_TOOLS.includes(state.tool) || spaceHeld) {
+        cursor.style.display = 'none';
+        return;
+    }
+    const rect = $('canvasWrapper').getBoundingClientRect();
+    const size = state.brushSize * state.zoom;
+    cursor.style.display = size >= 4 ? 'block' : 'none';
+    cursor.style.width = cursor.style.height = `${size}px`;
+    cursor.style.left = `${lastPointer.clientX - rect.left - size / 2}px`;
+    cursor.style.top = `${lastPointer.clientY - rect.top - size / 2}px`;
 }
 
-async function applyResize() {
-    EffectsModule.applyResize(state, composeLayers, saveState, closeModal);
-}
-
-function rotateLayer() {
-    EffectsModule.rotateLayer(state, composeLayers, saveState);
-}
-
-function flipLayerHorizontal() {
-    EffectsModule.flipLayerHorizontal(state, composeLayers, saveState);
-}
-
-function flipLayerVertical() {
-    EffectsModule.flipLayerVertical(state, composeLayers, saveState);
-}
-
-// Effects - using modules
-function applyGrayscale() {
-    EffectsModule.applyGrayscale(state, composeLayers, saveState);
-}
-
-function applyInvert() {
-    EffectsModule.applyInvert(state, composeLayers, saveState);
-}
-
-function applySepia() {
-    EffectsModule.applySepia(state, composeLayers, saveState);
-}
-
-function showEffectModal(effectName, effectFunction) {
-    EffectsModule.showEffectModal(effectName, effectFunction);
-}
-
-function applyEffect() {
-    EffectsModule.applyEffect(state, composeLayers, saveState, closeModal);
-}
-
-// History (Undo/Redo) - using modules
-function saveState() {
-    HistoryModule.saveState(state, updateUI);
-}
-
-function undo() {
-    HistoryModule.undo(state, updateLayersPanel, composeLayers, updateUI);
-}
-
-function redo() {
-    HistoryModule.redo(state, updateLayersPanel, composeLayers, updateUI);
-}
-
-function restoreState(historyState) {
-    HistoryModule.restoreState(state, historyState, updateLayersPanel, composeLayers, updateUI);
-}
-
-// UI Updates - using modules
-function updateUI() {
-    UIModule.updateUI(state);
-}
-
-function updatePreviewCanvasSize() {
-    UIModule.updatePreviewCanvasSize(state);
-}
-
-// Zoom Functions
-const ZOOM_FACTOR = 1.2; // Zoom increment/decrement multiplier
+// ---------------------------------------------------------------------------
+// Zoom
+// ---------------------------------------------------------------------------
 
 function applyZoom() {
-    if (!state) return;
-    
-    const canvasWrapper = document.getElementById('canvasWrapper');
-    const canvas = state.canvas;
-    const previewCanvas = state.previewCanvas;
-    
-    // Apply zoom transform with center origin
-    canvas.style.transform = `scale(${state.zoom})`;
-    canvas.style.transformOrigin = 'center';
-    if (previewCanvas) {
-        previewCanvas.style.transform = `scale(${state.zoom})`;
-        previewCanvas.style.transformOrigin = 'center';
+    if (!hasWorkspace()) return;
+    const w = `${state.canvas.width * state.zoom}px`;
+    const h = `${state.canvas.height * state.zoom}px`;
+    for (const c of [state.canvas, state.previewCanvas, state.selectionCanvas]) {
+        c.style.width = w;
+        c.style.height = h;
     }
-    
-    // Update zoom level display
-    document.getElementById('zoomLevel').textContent = `${Math.round(state.zoom * 100)}%`;
+    $('canvasWrapper').classList.toggle('pixelated', state.zoom >= 2);
+    $('zoomLevel').textContent = `${Math.round(state.zoom * 100)}%`;
+    updateLayerBounds();
 }
 
-function zoomIn() {
-    if (!state) return;
-    state.zoom = Math.min(state.zoomMax, state.zoom * ZOOM_FACTOR);
+// Zoom keeping the image point under (clientX, clientY) fixed on screen
+function zoomTo(zoom, clientX, clientY) {
+    if (!hasWorkspace()) return;
+    const container = $('canvasContainer');
+    const crect = container.getBoundingClientRect();
+    clientX ??= crect.left + crect.width / 2;
+    clientY ??= crect.top + crect.height / 2;
+    const before = state.canvas.getBoundingClientRect();
+    const px = (clientX - before.left) / state.zoom;
+    const py = (clientY - before.top) / state.zoom;
+
+    state.zoom = Math.max(state.zoomMin, Math.min(state.zoomMax, zoom));
+    applyZoom();
+
+    const after = state.canvas.getBoundingClientRect();
+    container.scrollLeft += after.left + px * state.zoom - clientX;
+    container.scrollTop += after.top + py * state.zoom - clientY;
+    updateBrushCursor();
+}
+
+function zoomStep(direction, clientX, clientY) {
+    const z = state.zoom;
+    const next = direction > 0
+        ? ZOOM_STEPS.find(s => s > z + 1e-6) ?? state.zoomMax
+        : [...ZOOM_STEPS].reverse().find(s => s < z - 1e-6) ?? state.zoomMin;
+    zoomTo(next, clientX, clientY);
+}
+
+function fitToScreen(onlyShrink = false) {
+    if (!hasWorkspace()) return;
+    const container = $('canvasContainer');
+    const availW = container.clientWidth - 40;
+    const availH = container.clientHeight - 40;
+    let zoom = Math.min(availW / state.canvas.width, availH / state.canvas.height);
+    if (onlyShrink) zoom = Math.min(1, zoom);
+    state.zoom = Math.max(state.zoomMin, Math.min(state.zoomMax, zoom));
     applyZoom();
 }
 
-function zoomOut() {
-    if (!state) return;
-    state.zoom = Math.max(state.zoomMin, state.zoom / ZOOM_FACTOR);
-    applyZoom();
-}
+// ---------------------------------------------------------------------------
+// Selection
+// ---------------------------------------------------------------------------
 
-function resetZoom() {
-    if (!state) return;
-    state.zoom = 1.0;
-    applyZoom();
-}
-
-// Selection Functions
 function selectAll() {
-    if (!state) return;
-    SelectionModule.selectAll(state);
+    if (!hasWorkspace()) return;
+    Selection.selectAll(state);
     startSelectionAnimation();
+    updateStatus();
 }
 
 function deselect() {
-    if (!state) return;
-    SelectionModule.clearSelection(state);
+    if (!hasWorkspace()) return;
+    Selection.clearSelection(state);
     stopSelectionAnimation();
-    state.previewCtx.clearRect(0, 0, state.previewCanvas.width, state.previewCanvas.height);
+    updateStatus();
 }
 
 function deleteSelection() {
-    if (!state) return;
-    const deleted = SelectionModule.deleteSelection(state, composeLayers, saveState);
-    if (deleted) {
-        stopSelectionAnimation();
-    }
+    if (!hasWorkspace() || !state.selection) return;
+    Selection.deleteSelection(state, composeLayers, saveState);
 }
 
-function updateToolOptions() {
-    if (!state) return;
-    
-    const brushOptions = document.getElementById('brushOptions');
-    const selectionOptions = document.getElementById('selectionOptions');
-    const fillOptions = document.getElementById('fillOptions');
-    const gradientOptions = document.getElementById('gradientOptions');
-    const textOptions = document.getElementById('textOptions');
-    const isSelectionTool = ['pointer', 'rectSelect', 'freeformSelect'].includes(state.tool);
-    const isBrushTool = ['brush', 'eraser'].includes(state.tool);
-    
-    if (isBrushTool) {
-        brushOptions.style.display = 'block';
-    } else {
-        brushOptions.style.display = 'none';
+function fillSelectionWithForeground() {
+    if (!hasWorkspace()) return;
+    if (!state.selection) {
+        UI.toast('Make a selection first');
+        return;
     }
-    
-    if (isSelectionTool) {
-        selectionOptions.style.display = 'block';
-    } else {
-        selectionOptions.style.display = 'none';
-    }
-    
-    if (state.tool === 'fill') {
-        fillOptions.style.display = 'block';
-    } else {
-        fillOptions.style.display = 'none';
-    }
-    
-    if (state.tool === 'gradient') {
-        gradientOptions.style.display = 'block';
-    } else {
-        gradientOptions.style.display = 'none';
-    }
-    
-    if (state.tool === 'text') {
-        textOptions.style.display = 'block';
-    } else {
-        textOptions.style.display = 'none';
-    }
+    Selection.fillSelection(state, state.foregroundColor, composeLayers, saveState);
 }
-
-// Selection animation
-let selectionAnimationId = null;
 
 function startSelectionAnimation() {
-    if (selectionAnimationId) return; // Already running
-    
-    function animate(timestamp) {
-        if (state && state.selection) {
-            SelectionModule.drawSelectionOutline(state, timestamp);
+    if (selectionAnimationId) return;
+    const animate = (timestamp) => {
+        if (hasWorkspace() && state.selection) {
+            Selection.drawSelectionOutline(state, timestamp);
             selectionAnimationId = requestAnimationFrame(animate);
         } else {
             selectionAnimationId = null;
         }
-    }
-    
+    };
     selectionAnimationId = requestAnimationFrame(animate);
 }
 
 function stopSelectionAnimation() {
-    if (selectionAnimationId) {
-        cancelAnimationFrame(selectionAnimationId);
-        selectionAnimationId = null;
-    }
+    if (selectionAnimationId) cancelAnimationFrame(selectionAnimationId);
+    selectionAnimationId = null;
+    if (state?.selectionCtx) state.selectionCtx.clearRect(0, 0, state.selectionCanvas.width, state.selectionCanvas.height);
 }
 
-// Metadata Helper Functions
-function hasMetadata(metadata) {
-    // Check if any metadata field has a non-empty value
-    for (const key in metadata) {
-        if (key === 'custom') {
-            if (metadata.custom && Object.keys(metadata.custom).length > 0) {
-                return true;
-            }
-        } else {
-            const value = metadata[key];
-            if (value !== null && value !== undefined && value !== '') {
-                return true;
-            }
-        }
-    }
-    return false;
-}
-
-function cleanMetadataForExport(metadata) {
-    const cleaned = {};
-    
-    // Copy non-empty values
-    for (const key in metadata) {
-        if (key === 'custom') {
-            // Handle custom fields separately
-            if (metadata.custom && Object.keys(metadata.custom).length > 0) {
-                cleaned.custom = { ...metadata.custom };
-            }
-        } else {
-            const value = metadata[key];
-            // Only include non-null, non-undefined, non-empty values
-            if (value !== null && value !== undefined && value !== '') {
-                cleaned[key] = value;
-            }
-        }
-    }
-    
-    return cleaned;
-}
-
-function mergeMetadata(existingMetadata, newMetadata) {
-    // Create a merged metadata object, preserving existing structure
-    const merged = { ...existingMetadata };
-    
-    // Merge all fields from newMetadata
-    for (const key in newMetadata) {
-        if (key === 'custom') {
-            // Merge custom fields
-            if (newMetadata.custom) {
-                merged.custom = {
-                    ...(merged.custom || {}),
-                    ...newMetadata.custom
-                };
-            }
-        } else if (newMetadata[key] !== null && newMetadata[key] !== undefined && newMetadata[key] !== '') {
-            merged[key] = newMetadata[key];
-        }
-    }
-    
-    return merged;
-}
-
-// Metadata Editor
-function updateMetadataTable() {
-    const tbody = document.getElementById('metadataTableBody');
-    tbody.innerHTML = '';
-    
-    // Metadata field groups
-    const metadataGroups = [
-        {
-            name: 'Basic Information',
-            fields: [
-                { key: 'title', label: 'Title', type: 'text' },
-                { key: 'description', label: 'Description', type: 'textarea' },
-                { key: 'author', label: 'Author', type: 'text' },
-                { key: 'copyright', label: 'Copyright', type: 'text' },
-                { key: 'software', label: 'Software', type: 'text' },
-                { key: 'userComment', label: 'User Comment', type: 'textarea' },
-                { key: 'creationDate', label: 'Creation Date', type: 'datetime' }
-            ]
-        },
-        {
-            name: 'GPS Location',
-            fields: [
-                { key: 'latitude', label: 'Latitude', type: 'number' },
-                { key: 'longitude', label: 'Longitude', type: 'number' }
-            ]
-        },
-        {
-            name: 'Camera Settings',
-            fields: [
-                { key: 'cameraMake', label: 'Camera Make', type: 'text' },
-                { key: 'cameraModel', label: 'Camera Model', type: 'text' },
-                { key: 'lensMake', label: 'Lens Make', type: 'text' },
-                { key: 'lensModel', label: 'Lens Model', type: 'text' },
-                { key: 'iso', label: 'ISO', type: 'number' },
-                { key: 'exposureTime', label: 'Exposure Time (s)', type: 'number' },
-                { key: 'fNumber', label: 'F-Number', type: 'number' },
-                { key: 'focalLength', label: 'Focal Length (mm)', type: 'number' },
-                { key: 'flash', label: 'Flash', type: 'number' },
-                { key: 'whiteBalance', label: 'White Balance', type: 'number' },
-                { key: 'orientation', label: 'Orientation', type: 'number' }
-            ]
-        },
-        {
-            name: 'Technical',
-            fields: [
-                { key: 'format', label: 'Format', type: 'text', readOnly: true },
-                { key: 'compression', label: 'Compression', type: 'text', readOnly: true },
-                { key: 'frameCount', label: 'Frame Count', type: 'number', readOnly: true },
-                { key: 'bitDepth', label: 'Bit Depth', type: 'number', readOnly: true },
-                { key: 'colorType', label: 'Color Type', type: 'text', readOnly: true },
-                { key: 'dpiX', label: 'DPI X', type: 'number' },
-                { key: 'dpiY', label: 'DPI Y', type: 'number' },
-                { key: 'physicalWidth', label: 'Physical Width (in)', type: 'number' },
-                { key: 'physicalHeight', label: 'Physical Height (in)', type: 'number' }
-            ]
-        }
-    ];
-    
-    // Add each group
-    metadataGroups.forEach(group => {
-        addMetadataGroup(tbody, group.name, group.fields);
-    });
-    
-    // Add custom fields group
-    if (state.metadata.custom && Object.keys(state.metadata.custom).length > 0) {
-        const customFields = Object.keys(state.metadata.custom).map(key => ({
-            key: key,
-            label: key,
-            type: 'text',
-            isCustom: true
-        }));
-        addMetadataGroup(tbody, 'Custom Fields', customFields);
-    }
-}
-
-function addMetadataGroup(tbody, groupName, fields) {
-    // Add group header row
-    const headerRow = document.createElement('tr');
-    headerRow.className = 'metadata-group-header';
-    const headerCell = document.createElement('td');
-    headerCell.colSpan = 2;
-    headerCell.textContent = groupName;
-    headerRow.appendChild(headerCell);
-    tbody.appendChild(headerRow);
-    
-    // Add fields in this group
-    fields.forEach(field => {
-        addMetadataRow(tbody, field.key, field.label, field.type, field.isCustom || false, field.readOnly || false);
-    });
-}
-
-function addMetadataRow(tbody, key, label, type, isCustom, readOnly) {
-    const tr = document.createElement('tr');
-    
-    const tdLabel = document.createElement('td');
-    const labelDiv = document.createElement('div');
-    labelDiv.className = 'metadata-field-name';
-    
-    const labelText = document.createElement('span');
-    labelText.textContent = label;
-    labelDiv.appendChild(labelText);
-    
-    if (isCustom) {
-        const deleteBtn = document.createElement('button');
-        deleteBtn.className = 'metadata-delete-btn';
-        deleteBtn.textContent = '×';
-        deleteBtn.title = 'Remove field';
-        deleteBtn.addEventListener('click', () => {
-            removeCustomMetadataField(key);
-        });
-        labelDiv.appendChild(deleteBtn);
-    }
-    
-    tdLabel.appendChild(labelDiv);
-    
-    const tdInput = document.createElement('td');
-    let input;
-    
-    if (type === 'textarea') {
-        input = document.createElement('textarea');
-        input.rows = 2;
+// Arrow-key nudging with the move tool
+function nudge(dx, dy) {
+    const layer = activeLayer();
+    if (state.selection) {
+        const floating = Selection.getSelectionCanvas(state, layer);
+        Selection.eraseSelectionArea(state, layer);
+        layer.ctx.drawImage(floating, state.selection.x + dx, state.selection.y + dy);
+        Selection.translateSelection(state, dx, dy);
+        Selection.refreshSelectionPixels(state);
     } else {
-        input = document.createElement('input');
-        if (type === 'number') {
-            input.type = 'number';
-            input.step = 'any';
-        } else if (type === 'datetime') {
-            input.type = 'datetime-local';
-        } else {
-            input.type = 'text';
-        }
+        layer.offsetX += dx;
+        layer.offsetY += dy;
     }
-    
-    input.className = 'metadata-input';
-    
-    // Get value from appropriate location (custom fields are in metadata.custom)
-    let value;
-    if (isCustom) {
-        value = state.metadata.custom?.[key] || '';
-    } else {
-        value = state.metadata[key];
-        // Handle date conversion
-        if (type === 'datetime' && value instanceof Date) {
-            // Convert Date to datetime-local format
-            const year = value.getFullYear();
-            const month = String(value.getMonth() + 1).padStart(2, '0');
-            const day = String(value.getDate()).padStart(2, '0');
-            const hours = String(value.getHours()).padStart(2, '0');
-            const minutes = String(value.getMinutes()).padStart(2, '0');
-            value = `${year}-${month}-${day}T${hours}:${minutes}`;
-        } else if (value === null || value === undefined) {
-            value = '';
-        }
-    }
-    
-    input.value = value;
-    input.placeholder = '';
-    
-    // Set read-only if specified
-    if (readOnly) {
-        input.readOnly = true;
-        input.style.cursor = 'default';
-        input.style.backgroundColor = 'transparent';
-    }
-    
-    input.addEventListener('input', (e) => {
-        let newValue = e.target.value;
-        
-        // Convert value based on type
-        if (type === 'number') {
-            newValue = newValue === '' ? null : parseFloat(newValue);
-        } else if (type === 'datetime') {
-            newValue = newValue === '' ? null : new Date(newValue);
-        }
-        
-        // Store in appropriate location
-        if (isCustom) {
-            if (!state.metadata.custom) {
-                state.metadata.custom = {};
-            }
-            state.metadata.custom[key] = newValue;
-        } else {
-            state.metadata[key] = newValue;
-        }
-    });
-    
-    tdInput.appendChild(input);
-    
-    tr.appendChild(tdLabel);
-    tr.appendChild(tdInput);
-    tbody.appendChild(tr);
-}
-
-function showAddMetadataFieldModal() {
-    document.getElementById('newMetadataFieldName').value = '';
-    const modal = document.getElementById('addMetadataFieldModal');
-    modal.classList.add('active');
-}
-
-function applyAddMetadataField() {
-    const fieldName = document.getElementById('newMetadataFieldName').value.trim();
-    
-    if (!fieldName) {
-        alert('Please enter a field name');
-        return;
-    }
-    
-    // Check if field already exists in standard fields or custom fields
-    if (state.metadata.hasOwnProperty(fieldName) || 
-        (state.metadata.custom && state.metadata.custom.hasOwnProperty(fieldName))) {
-        alert('A field with this name already exists');
-        return;
-    }
-    
-    // Initialize custom object if needed
-    if (!state.metadata.custom) {
-        state.metadata.custom = {};
-    }
-    
-    // Add to custom fields
-    state.metadata.custom[fieldName] = '';
-    
-    updateMetadataTable();
-    closeModal('addMetadataFieldModal');
-}
-
-function removeCustomMetadataField(fieldName) {
-    if (confirm(`Remove field "${fieldName}"?`)) {
-        // Remove from custom fields
-        if (state.metadata.custom && state.metadata.custom.hasOwnProperty(fieldName)) {
-            delete state.metadata.custom[fieldName];
-        }
-        
-        updateMetadataTable();
-    }
-}
-
-// Panel Section Toggle
-// UI Panel Management - using modules
-function togglePanelSection(panelName) {
-    const header = document.querySelector(`[data-panel="${panelName}"]`);
-    if (!header) return;
-    
-    const section = header.closest('.panel-section');
-    section.classList.toggle('collapsed');
-    
-    // Save state to localStorage
-    const isCollapsed = section.classList.contains('collapsed');
-    localStorage.setItem(`panel-${panelName}-collapsed`, isCollapsed);
-}
-
-function restorePanelStates() {
-    UIModule.restorePanelStates();
-}
-
-function toggleSidebar(sidebarId) {
-    UIModule.toggleSidebar(sidebarId);
-}
-
-function restoreUIState() {
-    UIModule.restoreUIState();
-}
-
-function closeModal(modalId) {
-    UIModule.closeModal(modalId);
-}
-function showLayerDurationModal(layerIndex) {
-    state.tempLayerIndex = layerIndex;
-    const layer = state.layers[layerIndex];
-    document.getElementById('layerDurationInput').value = layer.duration;
-    
-    const modal = document.getElementById('layerDurationModal');
-    modal.classList.add('active');
-}
-
-function applyLayerDuration() {
-    const duration = parseInt(document.getElementById('layerDurationInput').value);
-    if (duration >= MIN_LAYER_DURATION) {
-        state.layers[state.tempLayerIndex].duration = duration;
-        updateLayersPanel();
-        saveState();
-    }
-    closeModal('layerDurationModal');
-}
-
-// Layer Opacity Editor
-function showLayerOpacityModal(layerIndex) {
-    state.tempLayerIndex = layerIndex;
-    const layer = state.layers[layerIndex];
-    const opacityPercent = Math.round(layer.opacity * 100);
-    document.getElementById('layerOpacityInput').value = opacityPercent;
-    document.getElementById('layerOpacityValue').textContent = opacityPercent;
-    
-    const modal = document.getElementById('layerOpacityModal');
-    modal.classList.add('active');
-}
-
-function applyLayerOpacity() {
-    const opacityPercent = parseInt(document.getElementById('layerOpacityInput').value);
-    state.layers[state.tempLayerIndex].opacity = opacityPercent / 100;
-    updateLayersPanel();
     composeLayers();
-    saveState();
-    closeModal('layerOpacityModal');
+    updateStatus();
+    clearTimeout(nudgeSaveTimer);
+    nudgeSaveTimer = setTimeout(saveState, 400);
 }
 
-// Image Dimensions Editor
-function showImageDimensionsModal() {
-    document.getElementById('imageDimWidth').value = state.canvas.width;
-    document.getElementById('imageDimHeight').value = state.canvas.height;
-    document.getElementById('scaleAllLayers').checked = false;
-    
-    const modal = document.getElementById('imageDimensionsModal');
-    modal.classList.add('active');
-}
+// ---------------------------------------------------------------------------
+// Clipboard
+// ---------------------------------------------------------------------------
 
-function applyImageDimensions() {
-    const newWidth = parseInt(document.getElementById('imageDimWidth').value);
-    const newHeight = parseInt(document.getElementById('imageDimHeight').value);
-    const scaleAllLayers = document.getElementById('scaleAllLayers').checked;
-    
-    if (newWidth > 0 && newHeight > 0) {
-        const oldWidth = state.canvas.width;
-        const oldHeight = state.canvas.height;
-        
-        state.canvas.width = newWidth;
-        state.canvas.height = newHeight;
-        
-        if (scaleAllLayers) {
-            // Scale all layers proportionally
-            state.layers.forEach(layer => {
-                const tempCanvas = document.createElement('canvas');
-                tempCanvas.width = oldWidth;
-                tempCanvas.height = oldHeight;
-                const tempCtx = tempCanvas.getContext('2d');
-                tempCtx.drawImage(layer.canvas, 0, 0);
-                
-                layer.canvas.width = newWidth;
-                layer.canvas.height = newHeight;
-                layer.ctx.clearRect(0, 0, newWidth, newHeight);
-                layer.ctx.drawImage(tempCanvas, 0, 0, oldWidth, oldHeight, 0, 0, newWidth, newHeight);
-            });
-        } else {
-            // Just resize canvases without scaling content
-            state.layers.forEach(layer => {
-                const tempCanvas = document.createElement('canvas');
-                tempCanvas.width = oldWidth;
-                tempCanvas.height = oldHeight;
-                const tempCtx = tempCanvas.getContext('2d');
-                tempCtx.drawImage(layer.canvas, 0, 0);
-                
-                layer.canvas.width = newWidth;
-                layer.canvas.height = newHeight;
-                layer.ctx.clearRect(0, 0, newWidth, newHeight);
-                layer.ctx.drawImage(tempCanvas, 0, 0);
-            });
-        }
-        
-        updatePreviewCanvasSize();
+async function copy(cut = false) {
+    if (!hasWorkspace()) return;
+    const layer = activeLayer();
+    let canvas, x, y;
+    if (state.selection) {
+        canvas = Selection.getSelectionCanvas(state, layer);
+        x = state.selection.x + layer.offsetX;
+        y = state.selection.y + layer.offsetY;
+    } else {
+        canvas = Layers.cloneCanvas(layer.canvas);
+        x = layer.offsetX;
+        y = layer.offsetY;
+    }
+    clipboard = { canvas, x, y };
+
+    if (cut) {
+        if (state.selection) Selection.eraseSelectionArea(state, layer);
+        else layer.ctx.clearRect(0, 0, layer.canvas.width, layer.canvas.height);
         composeLayers();
         saveState();
     }
-    
-    closeModal('imageDimensionsModal');
+
+    // Mirror to the system clipboard when the browser allows it
+    try {
+        if (navigator.clipboard?.write && window.ClipboardItem) {
+            const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+            await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+        }
+    } catch {
+        // Internal clipboard still works
+    }
+    UI.toast(cut ? 'Cut to clipboard' : 'Copied to clipboard');
 }
 
-// Collapsible Sidebar Functions
-// Event Listeners
-function setupEventListeners() {
-    // Canvas events - will be bound to the current state
-    const canvas = document.getElementById('mainCanvas');
-    canvas.addEventListener('mousedown', startDrawing);
-    canvas.addEventListener('mousemove', draw);
-    canvas.addEventListener('mouseup', stopDrawing);
-    canvas.addEventListener('mouseleave', stopDrawing);
-    
-    // Start screen buttons
-    document.getElementById('startNewBtn').addEventListener('click', createNewImage);
-    document.getElementById('startOpenBtn').addEventListener('click', openImage);
-    
-    // File operations
-    document.getElementById('newBtn').addEventListener('click', createNewImage);
-    document.getElementById('openBtn').addEventListener('click', openImage);
-    document.getElementById('importLayerBtn').addEventListener('click', importAsLayer);
-    document.getElementById('saveBtn').addEventListener('click', saveImage);
-    document.getElementById('fileInput').addEventListener('change', handleFileUpload);
-    document.getElementById('importLayerInput').addEventListener('change', handleImportLayer);
-    
-    // Undo/Redo
-    document.getElementById('undoBtn').addEventListener('click', undo);
-    document.getElementById('redoBtn').addEventListener('click', redo);
-    
-    // Zoom controls
-    document.getElementById('zoomInBtn').addEventListener('click', zoomIn);
-    document.getElementById('zoomOutBtn').addEventListener('click', zoomOut);
-    document.getElementById('zoomResetBtn').addEventListener('click', resetZoom);
-    
-    // Text tool modal
-    document.getElementById('applyTextBtn').addEventListener('click', () => {
-        if (!state) return;
-        const text = document.getElementById('textInput').value.trim();
-        if (text && state.pendingTextPosition) {
-            DrawingModule.renderText(state, text, state.pendingTextPosition.x, state.pendingTextPosition.y, composeLayers, saveState);
+async function pasteImageFile(file, internalMatch) {
+    const bitmap = await createImageBitmap(file);
+    const canvas = Layers.createCanvas(bitmap.width, bitmap.height);
+    canvas.getContext('2d').drawImage(bitmap, 0, 0);
+    // Prefer our own clipboard when it holds the same image, so the position is kept
+    if (internalMatch && clipboard && clipboard.canvas.width === bitmap.width && clipboard.canvas.height === bitmap.height) {
+        pasteCanvas(clipboard.canvas, clipboard.x, clipboard.y);
+        return;
+    }
+    if (!hasWorkspace()) {
+        createWorkspace('Pasted image', bitmap.width, bitmap.height, 'transparent');
+        activeLayer().ctx.drawImage(canvas, 0, 0);
+        activeLayer().name = 'Pasted';
+        refresh();
+        saveState();
+        state.dirty = true;
+        updateTabBar();
+        return;
+    }
+    pasteCanvas(canvas);
+}
+
+function pasteCanvas(canvas, x, y) {
+    if (!hasWorkspace()) return;
+    deselect();
+    FileIO.addCanvasAsLayer(state, canvas, 'Pasted', undefined, x, y);
+    refresh();
+    saveState();
+}
+
+async function pasteFromButton() {
+    try {
+        if (navigator.clipboard?.read) {
+            const items = await navigator.clipboard.read();
+            for (const item of items) {
+                const type = item.types.find(t => t.startsWith('image/'));
+                if (type) {
+                    await pasteImageFile(await item.getType(type), true);
+                    return;
+                }
+            }
         }
-        closeModal('textModal');
-        state.pendingTextPosition = null;
+    } catch {
+        // Fall back to the internal clipboard
+    }
+    if (clipboard) pasteCanvas(clipboard.canvas, clipboard.x, clipboard.y);
+    else UI.toast('Clipboard has no image');
+}
+
+function onPaste(e) {
+    if (isTypingTarget(e.target)) return;
+    const file = Array.from(e.clipboardData?.files || []).find(f => f.type.startsWith('image/'));
+    e.preventDefault();
+    if (file) {
+        pasteImageFile(file, true).catch(err => UI.toast('Paste failed: ' + err.message, 'error'));
+    } else if (clipboard) {
+        pasteCanvas(clipboard.canvas, clipboard.x, clipboard.y);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// File operations
+// ---------------------------------------------------------------------------
+
+function fileApp() {
+    return {
+        createWorkspace,
+        getState: () => state,
+        mergeMetadata: Metadata.mergeMetadata,
+        refresh: () => {
+            refresh();
+            Metadata.updateMetadataTable();
+            updateTabBar();
+        },
+        saveState,
+        fitToScreen,
+        toast: UI.toast
+    };
+}
+
+function openFiles(files) {
+    return FileIO.openFiles(Array.from(files), fileApp());
+}
+
+function importFiles(files) {
+    if (!hasWorkspace()) return openFiles(files);
+    deselect();
+    return FileIO.importFilesAsLayers(Array.from(files), state, fileApp());
+}
+
+function showSaveDialog() {
+    if (!hasWorkspace()) return;
+    FileIO.saveImage(state);
+    updateSaveOptions();
+}
+
+function updateSaveOptions() {
+    const format = $('saveFormat').value;
+    $('qualityLabel').style.display = FileIO.FORMATS[format]?.quality ? 'block' : 'none';
+    $('tiffOptions').style.display = format === 'tiff' ? 'block' : 'none';
+    const multi = MULTI_FRAME_FORMATS.includes(format) && hasWorkspace() && state.layers.length > 1;
+    $('multiFrameLabel').style.display = multi ? 'block' : 'none';
+}
+
+async function applySave() {
+    await FileIO.applySaveImage(state, Metadata.hasMetadata, Metadata.cleanMetadataForExport, UI.closeModal, UI.toast);
+    updateTabBar();
+}
+
+function showNewImageDialog() {
+    UI.showModal('newImageModal');
+}
+
+function applyNewImage() {
+    const width = parseInt($('newWidth').value);
+    const height = parseInt($('newHeight').value);
+    if (!(width > 0 && height > 0 && width <= 16384 && height <= 16384)) {
+        UI.toast('Width and height must be between 1 and 16384', 'error');
+        return;
+    }
+    const bg = $('newTransparent').checked ? 'transparent' : $('newBgColor').value;
+    UI.closeModal('newImageModal');
+    createWorkspace(`Untitled-${globalState.nextWorkspaceId}`, width, height, bg);
+}
+
+// ---------------------------------------------------------------------------
+// Image operations
+// ---------------------------------------------------------------------------
+
+function imageOp(fn) {
+    if (!hasWorkspace()) return;
+    runSafely(() => {
+        if (fn() === false) return;
+        stopSelectionAnimation();
+        refresh();
+        saveState();
+        updateTabBar();
     });
-    
-    document.getElementById('cancelTextBtn').addEventListener('click', () => {
-        if (!state) return;
-        closeModal('textModal');
-        state.pendingTextPosition = null;
+}
+
+function cropToSelection() {
+    if (!hasWorkspace()) return;
+    if (!state.selection) {
+        UI.toast('Make a selection to crop to');
+        return;
+    }
+    imageOp(() => Effects.cropToSelection(state));
+}
+
+function showImageDimensionsModal() {
+    if (!hasWorkspace()) return;
+    $('imageDimWidth').value = state.canvas.width;
+    $('imageDimHeight').value = state.canvas.height;
+    $('imageDimensionsModal').dataset.aspect = state.canvas.width / state.canvas.height;
+    $('imageDimAnchorLabel').style.display = $('imageDimMode').value === 'canvas' ? 'block' : 'none';
+    UI.showModal('imageDimensionsModal');
+}
+
+function applyImageDimensions() {
+    const width = parseInt($('imageDimWidth').value);
+    const height = parseInt($('imageDimHeight').value);
+    if (!(width > 0 && height > 0 && width <= 16384 && height <= 16384)) {
+        UI.toast('Width and height must be between 1 and 16384', 'error');
+        return;
+    }
+    const mode = $('imageDimMode').value;
+    const [ax, ay] = $('imageDimAnchor').value.split(',').map(Number);
+    UI.closeModal('imageDimensionsModal');
+    imageOp(() => {
+        if (width === state.canvas.width && height === state.canvas.height) return false;
+        if (mode === 'scale') {
+            Effects.scaleImage(state, width, height);
+        } else {
+            const dx = Math.round((width - state.canvas.width) * ax);
+            const dy = Math.round((height - state.canvas.height) * ay);
+            Selection.clearSelection(state);
+            Effects.resizeCanvasAll(state, width, height, dx, dy);
+        }
     });
-    
+}
+
+function linkAspect(widthId, heightId, checkboxId, modalId) {
+    const w = $(widthId);
+    const h = $(heightId);
+    const ratio = () => Number($(modalId).dataset.aspect) || 1;
+    w.addEventListener('input', () => {
+        if ($(checkboxId).checked && w.value) h.value = Math.max(1, Math.round(w.value / ratio()));
+    });
+    h.addEventListener('input', () => {
+        if ($(checkboxId).checked && h.value) w.value = Math.max(1, Math.round(h.value * ratio()));
+    });
+}
+
+// ---------------------------------------------------------------------------
+// Keyboard
+// ---------------------------------------------------------------------------
+
+function isTypingTarget(el) {
+    return el && (el.tagName === 'INPUT' && !['checkbox', 'range', 'color', 'button'].includes(el.type) ||
+        el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable);
+}
+
+const MODAL_CANCEL = {
+    effectModal: () => Effects.cancelEffect(composeLayers, UI.closeModal),
+    textModal: () => { UI.closeModal('textModal'); state.pendingTextPosition = null; }
+};
+
+function handleModalKeys(e, modal) {
+    if (e.key === 'Escape') {
+        e.preventDefault();
+        (MODAL_CANCEL[modal.id] || (() => UI.closeModal(modal.id)))();
+    } else if (e.key === 'Enter' && !(e.target.tagName === 'TEXTAREA' && e.shiftKey) && e.target.tagName !== 'BUTTON') {
+        e.preventDefault();
+        modal.querySelector('.modal-buttons button')?.click();
+    }
+}
+
+const TOOL_KEYS = { a: 'pointer', v: 'move', m: 'rectSelect', l: 'freeformSelect', b: 'brush', e: 'eraser', g: 'fill', u: 'rect', o: 'circle', n: 'line', t: 'text', i: 'eyedropper' };
+
+function onKeyDown(e) {
+    const modal = UI.getOpenModal();
+    if (modal) {
+        handleModalKeys(e, modal);
+        return;
+    }
+    if (isTypingTarget(e.target)) return;
+
+    const key = e.key.toLowerCase();
+    const mod = e.ctrlKey || e.metaKey;
+
+    if (mod) {
+        const actions = {
+            z: () => (e.shiftKey ? redo() : undo()),
+            y: redo,
+            s: showSaveDialog,
+            o: () => (e.shiftKey ? FileIO.importAsLayer() : FileIO.openImage()),
+            a: selectAll,
+            d: deselect,
+            c: () => copy(false),
+            x: () => (e.shiftKey ? cropToSelection() : copy(true)),
+            j: duplicateLayer,
+            e: () => (e.shiftKey ? flatten() : mergeDown()),
+            ']': moveLayerUp,
+            '[': moveLayerDown,
+            '=': () => zoomStep(1),
+            '+': () => zoomStep(1),
+            '-': () => zoomStep(-1),
+            '0': () => fitToScreen(),
+            '1': () => zoomTo(1)
+        };
+        // Let the browser deliver a real paste event (handled in onPaste)
+        if (key === 'v') return;
+        if (actions[key]) {
+            e.preventDefault();
+            actions[key]();
+        }
+        return;
+    }
+
+    if (e.altKey) {
+        if (key === 'n') {
+            e.preventDefault();
+            showNewImageDialog();
+        } else if (e.key === 'Backspace' || e.key === 'Delete') {
+            e.preventDefault();
+            fillSelectionWithForeground();
+        }
+        return;
+    }
+
+    if (e.key === ' ') {
+        e.preventDefault();
+        if (!spaceHeld) {
+            spaceHeld = true;
+            $('canvasWrapper').classList.add('pan-ready');
+            updateBrushCursor();
+        }
+        return;
+    }
+
+    if (e.key === 'Escape') {
+        deselect();
+        return;
+    }
+    if (e.key === '?') {
+        UI.showModal('shortcutsModal');
+        return;
+    }
+    if (!hasWorkspace() && !TOOL_KEYS[key] && !'xd'.includes(key)) return;
+
+    if ((e.key === 'Delete' || e.key === 'Backspace') && hasWorkspace()) {
+        e.preventDefault();
+        deleteSelection();
+        return;
+    }
+
+    if (e.key.startsWith('Arrow') && state.tool === 'move' && hasWorkspace()) {
+        e.preventDefault();
+        const step = e.shiftKey ? 10 : 1;
+        const delta = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[e.key];
+        nudge(...delta);
+        return;
+    }
+
+    if (key === 'g' && e.shiftKey) return setTool('gradient');
+    if (key === 'n' && e.shiftKey) return addLayer();
+    if (TOOL_KEYS[key] && !e.shiftKey) return setTool(TOOL_KEYS[key]);
+    if (key === 'x') return swapColors();
+    if (key === 'd') return resetColors();
+    if (e.key === '[') return setBrushSize(state.brushSize > 10 ? state.brushSize * 0.8 : state.brushSize - 1);
+    if (e.key === ']') return setBrushSize(state.brushSize >= 10 ? state.brushSize * 1.25 : state.brushSize + 1);
+}
+
+function onKeyUp(e) {
+    if (e.key === ' ') {
+        spaceHeld = false;
+        $('canvasWrapper').classList.remove('pan-ready');
+        updateBrushCursor();
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Drag & drop of files
+// ---------------------------------------------------------------------------
+
+function setupFileDrop() {
+    let depth = 0;
+    const overlay = $('dropOverlay');
+    const hasFiles = e => e.dataTransfer?.types?.includes('Files');
+
+    document.addEventListener('dragenter', (e) => {
+        if (!hasFiles(e)) return;
+        depth++;
+        overlay.classList.add('active');
+    });
+    document.addEventListener('dragleave', (e) => {
+        if (!hasFiles(e)) return;
+        depth = Math.max(0, depth - 1);
+        if (!depth) overlay.classList.remove('active');
+    });
+    document.addEventListener('dragover', (e) => {
+        if (hasFiles(e)) e.preventDefault();
+    });
+    document.addEventListener('drop', (e) => {
+        if (!hasFiles(e)) return;
+        e.preventDefault();
+        depth = 0;
+        overlay.classList.remove('active');
+        const extensions = OPENABLE_EXTENSIONS.split(',');
+        const files = Array.from(e.dataTransfer.files).filter(f =>
+            f.type.startsWith('image/') || extensions.some(ext => f.name.toLowerCase().endsWith(ext)));
+        if (!files.length) return;
+        if (e.shiftKey && hasWorkspace()) importFiles(files);
+        else openFiles(files);
+    });
+}
+
+// ---------------------------------------------------------------------------
+// Event wiring
+// ---------------------------------------------------------------------------
+
+function on(id, event, handler) {
+    $(id).addEventListener(event, handler);
+}
+
+function setupEventListeners() {
+    const wrapper = $('canvasWrapper');
+    wrapper.addEventListener('pointerdown', onPointerDown);
+    wrapper.addEventListener('pointermove', onPointerMove);
+    wrapper.addEventListener('pointerup', onPointerUp);
+    wrapper.addEventListener('pointercancel', onPointerUp);
+    wrapper.addEventListener('pointerleave', () => {
+        lastPointer = null;
+        updateBrushCursor();
+    });
+    wrapper.addEventListener('contextmenu', e => e.preventDefault());
+
+    $('canvasContainer').addEventListener('wheel', (e) => {
+        if (!hasWorkspace() || !(e.ctrlKey || e.metaKey)) return;
+        e.preventDefault();
+        const factor = Math.exp(-e.deltaY * 0.0015);
+        zoomTo(state.zoom * factor, e.clientX, e.clientY);
+    }, { passive: false });
+
+    document.addEventListener('keydown', onKeyDown);
+    document.addEventListener('keyup', onKeyUp);
+    window.addEventListener('blur', () => onKeyUp({ key: ' ' }));
+    document.addEventListener('paste', onPaste);
+    window.addEventListener('resize', updateLayerBounds);
+    window.addEventListener('beforeunload', (e) => {
+        if ([...globalState.workspaces.values()].some(ws => ws.dirty)) {
+            e.preventDefault();
+            e.returnValue = '';
+        }
+    });
+    setupFileDrop();
+
+    // Start screen & file
+    on('startNewBtn', 'click', showNewImageDialog);
+    on('startOpenBtn', 'click', FileIO.openImage);
+    on('newBtn', 'click', showNewImageDialog);
+    on('openBtn', 'click', FileIO.openImage);
+    on('importLayerBtn', 'click', () => hasWorkspace() && FileIO.importAsLayer());
+    on('saveBtn', 'click', showSaveDialog);
+    on('fileInput', 'change', async (e) => {
+        await openFiles(e.target.files);
+        e.target.value = '';
+    });
+    on('importLayerInput', 'change', async (e) => {
+        await importFiles(e.target.files);
+        e.target.value = '';
+    });
+
+    // Edit
+    on('undoBtn', 'click', undo);
+    on('redoBtn', 'click', redo);
+    on('copyBtn', 'click', () => copy(false));
+    on('pasteBtn', 'click', pasteFromButton);
+    on('cropBtn', 'click', cropToSelection);
+    on('shortcutsBtn', 'click', () => UI.showModal('shortcutsModal'));
+    on('closeShortcutsBtn', 'click', () => UI.closeModal('shortcutsModal'));
+
+    // Zoom
+    on('zoomInBtn', 'click', () => zoomStep(1));
+    on('zoomOutBtn', 'click', () => zoomStep(-1));
+    on('zoomResetBtn', 'click', () => zoomTo(1));
+    on('zoomFitBtn', 'click', () => fitToScreen());
+
     // Tools
     document.querySelectorAll('[data-tool]').forEach(btn => {
-        btn.addEventListener('click', function() {
-            document.querySelectorAll('[data-tool]').forEach(b => b.classList.remove('active'));
-            this.classList.add('active');
-            state.tool = this.dataset.tool;
-            updateToolOptions();
-        });
+        btn.addEventListener('click', () => setTool(btn.dataset.tool));
     });
-    
-    // Tool options
-    document.getElementById('selectAllBtn').addEventListener('click', selectAll);
-    document.getElementById('deselectBtn').addEventListener('click', deselect);
-    
-    // Color pickers
-    document.getElementById('foregroundColor').addEventListener('change', (e) => {
-        state.foregroundColor = e.target.value;
-    });
-    
-    document.getElementById('backgroundColor').addEventListener('change', (e) => {
-        state.backgroundColor = e.target.value;
-    });
-    
-    // Brush settings
-    document.getElementById('brushSize').addEventListener('input', (e) => {
-        state.brushSize = parseInt(e.target.value);
-        document.getElementById('brushSizeValue').textContent = state.brushSize;
-    });
-    
-    document.getElementById('opacity').addEventListener('input', (e) => {
+    on('selectAllBtn', 'click', selectAll);
+    on('deselectBtn', 'click', deselect);
+    on('swapColorsBtn', 'click', swapColors);
+    on('resetColorsBtn', 'click', resetColors);
+
+    on('foregroundColor', 'input', e => { state.foregroundColor = e.target.value; });
+    on('backgroundColor', 'input', e => { state.backgroundColor = e.target.value; });
+    on('brushSize', 'input', e => setBrushSize(parseInt(e.target.value)));
+    on('opacity', 'input', (e) => {
         state.opacity = parseInt(e.target.value) / 100;
-        document.getElementById('opacityValue').textContent = e.target.value;
+        $('opacityValue').textContent = e.target.value;
     });
-    
-    // Fill tool settings
-    document.getElementById('fillTolerance').addEventListener('input', (e) => {
+    on('fillTolerance', 'input', (e) => {
         state.fillTolerance = parseInt(e.target.value);
-        document.getElementById('fillToleranceValue').textContent = state.fillTolerance;
+        $('fillToleranceValue').textContent = state.fillTolerance;
     });
-    
-    // Gradient tool settings
-    document.getElementById('gradientType').addEventListener('change', (e) => {
-        state.gradientType = e.target.value;
-    });
-    
-    // Text tool settings
-    document.getElementById('fontSize').addEventListener('input', (e) => {
+    on('gradientType', 'change', e => { state.gradientType = e.target.value; });
+    on('shapeFill', 'change', e => { state.shapeFill = e.target.value; });
+    on('fontSize', 'input', (e) => {
         state.fontSize = parseInt(e.target.value);
-        document.getElementById('fontSizeValue').textContent = state.fontSize;
+        $('fontSizeValue').textContent = state.fontSize;
     });
-    
-    document.getElementById('fontFamily').addEventListener('change', (e) => {
-        state.fontFamily = e.target.value;
+    on('fontFamily', 'change', e => { state.fontFamily = e.target.value; });
+    on('fontBold', 'change', e => { state.fontBold = e.target.checked; });
+    on('fontItalic', 'change', e => { state.fontItalic = e.target.checked; });
+
+    // Text dialog
+    on('applyTextBtn', 'click', () => {
+        const text = $('textInput').value;
+        UI.closeModal('textModal');
+        if (hasWorkspace() && text.trim() && state.pendingTextPosition) {
+            const { x, y } = state.pendingTextPosition;
+            Drawing.renderText(state, text, x, y, composeLayers, saveState);
+        }
+        state.pendingTextPosition = null;
     });
-    
-    // Layer controls
-    document.getElementById('addLayerBtn').addEventListener('click', () => {
-        createLayer();
+    on('cancelTextBtn', 'click', MODAL_CANCEL.textModal);
+
+    // Layers
+    on('addLayerBtn', 'click', addLayer);
+    on('duplicateLayerBtn', 'click', duplicateLayer);
+    on('layerUpBtn', 'click', moveLayerUp);
+    on('layerDownBtn', 'click', moveLayerDown);
+    on('mergeLayersBtn', 'click', mergeDown);
+    on('flattenBtn', 'click', flatten);
+    on('deleteLayerBtn', 'click', deleteActiveLayer);
+    on('layerBlendMode', 'change', (e) => {
+        if (!hasWorkspace()) return;
+        activeLayer().blendMode = e.target.value;
+        composeLayers();
+        updateLayersPanel();
         saveState();
     });
-    
-    document.getElementById('mergeLayersBtn').addEventListener('click', () => {
-        if (state.activeLayerIndex > 0) {
-            const activeLayer = state.layers[state.activeLayerIndex];
-            const belowLayer = state.layers[state.activeLayerIndex - 1];
-            
-            // Draw active layer onto layer below
-            belowLayer.ctx.globalAlpha = activeLayer.opacity;
-            belowLayer.ctx.drawImage(activeLayer.canvas, 0, 0);
-            belowLayer.ctx.globalAlpha = 1.0;
-            
-            // Delete active layer
-            deleteLayer(state.activeLayerIndex);
-        }
+    on('layerOpacity', 'input', (e) => {
+        if (!hasWorkspace()) return;
+        activeLayer().opacity = parseInt(e.target.value) / 100;
+        $('layerOpacityValue').textContent = e.target.value;
+        composeLayers();
     });
-    
-    // Transforms
-    document.getElementById('resizeBtn').addEventListener('click', resizeLayer);
-    document.getElementById('rotateBtn').addEventListener('click', rotateLayer);
-    document.getElementById('flipHBtn').addEventListener('click', flipLayerHorizontal);
-    document.getElementById('flipVBtn').addEventListener('click', flipLayerVertical);
-    
-    // Effects
-    document.getElementById('grayscaleBtn').addEventListener('click', applyGrayscale);
-    document.getElementById('sepiaBtn').addEventListener('click', applySepia);
-    document.getElementById('invertBtn').addEventListener('click', applyInvert);
-    document.getElementById('brightnessBtn').addEventListener('click', () => {
-        showEffectModal('Brightness', 'brightness');
+    on('layerOpacity', 'change', () => {
+        if (!hasWorkspace()) return;
+        updateLayersPanel();
+        saveState();
     });
-    document.getElementById('contrastBtn').addEventListener('click', () => {
-        showEffectModal('Contrast', 'contrast');
+    on('applyLayerDurationBtn', 'click', applyLayerDuration);
+    on('cancelLayerDurationBtn', 'click', () => UI.closeModal('layerDurationModal'));
+
+    // Image & layer transforms
+    on('imageDimensionsBtn', 'click', showImageDimensionsModal);
+    on('cropSelectionBtn', 'click', cropToSelection);
+    document.querySelectorAll('[data-image-transform]').forEach(btn => {
+        btn.addEventListener('click', () => imageOp(() => Effects.transformImage(state, btn.dataset.imageTransform)));
     });
-    document.getElementById('exposureBtn').addEventListener('click', () => {
-        showEffectModal('Exposure', 'exposure');
-    });
-    document.getElementById('saturationBtn').addEventListener('click', () => {
-        showEffectModal('Saturation', 'saturation');
-    });
-    document.getElementById('hueBtn').addEventListener('click', () => {
-        showEffectModal('Hue', 'hue');
-    });
-    document.getElementById('blurBtn').addEventListener('click', () => {
-        showEffectModal('Blur', 'blur');
-    });
-    document.getElementById('gaussianBlurBtn').addEventListener('click', () => {
-        showEffectModal('Gaussian Blur', 'gaussianBlur');
-    });
-    document.getElementById('medianFilterBtn').addEventListener('click', () => {
-        showEffectModal('Median Filter', 'medianFilter');
-    });
-    document.getElementById('sharpenBtn').addEventListener('click', () => {
-        showEffectModal('Sharpen', 'sharpen');
-    });
-    
-    // Modal buttons
-    document.getElementById('createNewBtn').addEventListener('click', applyNewImage);
-    document.getElementById('cancelNewBtn').addEventListener('click', () => closeModal('newImageModal'));
-    
-    document.getElementById('applyResizeBtn').addEventListener('click', applyResize);
-    document.getElementById('cancelResizeBtn').addEventListener('click', () => closeModal('resizeModal'));
-    
-    document.getElementById('applyEffectBtn').addEventListener('click', applyEffect);
-    document.getElementById('cancelEffectBtn').addEventListener('click', () => closeModal('effectModal'));
-    
-    // Effect slider update
-    document.getElementById('effectSlider').addEventListener('input', (e) => {
-        document.getElementById('effectValue').textContent = e.target.value;
-    });
-    
-    // Save modal controls
-    document.getElementById('saveFormat').addEventListener('change', (e) => {
-        const format = e.target.value;
-        const qualityLabel = document.getElementById('qualityLabel');
-        const tiffOptions = document.getElementById('tiffOptions');
-        
-        // Show quality slider for JPEG, WebP, HEIC, and AVIF
-        if (format === 'jpeg' || format === 'webp' || format === 'heic' || format === 'avif') {
-            qualityLabel.style.display = 'block';
-        } else {
-            qualityLabel.style.display = 'none';
-        }
-        
-        // Show TIFF options for TIFF format
-        if (format === 'tiff') {
-            tiffOptions.style.display = 'block';
-        } else {
-            tiffOptions.style.display = 'none';
-        }
-    });
-    
-    document.getElementById('saveQuality').addEventListener('input', (e) => {
-        document.getElementById('qualityValue').textContent = e.target.value;
-    });
-    
-    document.getElementById('applySaveBtn').addEventListener('click', applySaveImage);
-    document.getElementById('cancelSaveBtn').addEventListener('click', () => closeModal('saveModal'));
-    
-    // Metadata modal controls
-    document.getElementById('addMetadataFieldBtn').addEventListener('click', showAddMetadataFieldModal);
-    document.getElementById('applyAddMetadataFieldBtn').addEventListener('click', applyAddMetadataField);
-    document.getElementById('cancelAddMetadataFieldBtn').addEventListener('click', () => closeModal('addMetadataFieldModal'));
-    
-    // Panel section toggles
-    document.querySelectorAll('.panel-header').forEach(header => {
-        header.addEventListener('click', () => {
-            const panelName = header.dataset.panel;
-            togglePanelSection(panelName);
+    document.querySelectorAll('[data-layer-transform]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            if (!hasWorkspace()) return;
+            stopSelectionAnimation();
+            Effects.transformLayer(state, btn.dataset.layerTransform, composeLayers, saveState);
+            refresh();
         });
     });
-    
-    // Layer duration modal controls
-    document.getElementById('applyLayerDurationBtn').addEventListener('click', applyLayerDuration);
-    document.getElementById('cancelLayerDurationBtn').addEventListener('click', () => closeModal('layerDurationModal'));
-    
-    // Layer opacity modal controls
-    document.getElementById('layerOpacityInput').addEventListener('input', (e) => {
-        document.getElementById('layerOpacityValue').textContent = e.target.value;
+    on('resizeBtn', 'click', () => hasWorkspace() && (Effects.resizeLayer(state), UI.showModal('resizeModal')));
+    on('applyResizeBtn', 'click', () => {
+        stopSelectionAnimation();
+        Effects.applyResize(state, composeLayers, saveState, UI.closeModal);
+        refresh();
     });
-    document.getElementById('applyLayerOpacityBtn').addEventListener('click', applyLayerOpacity);
-    document.getElementById('cancelLayerOpacityBtn').addEventListener('click', () => closeModal('layerOpacityModal'));
-    
-    // Image dimensions modal controls
-    document.getElementById('imageDimensionsBtn').addEventListener('click', showImageDimensionsModal);
-    document.getElementById('applyImageDimensionsBtn').addEventListener('click', applyImageDimensions);
-    document.getElementById('cancelImageDimensionsBtn').addEventListener('click', () => closeModal('imageDimensionsModal'));
-    
-    // Collapsible sidebar controls
-    document.getElementById('leftCollapseToggle').addEventListener('click', () => {
-        toggleSidebar('leftSidebar');
+    on('cancelResizeBtn', 'click', () => UI.closeModal('resizeModal'));
+    linkAspect('resizeWidth', 'resizeHeight', 'maintainAspect', 'resizeModal');
+    linkAspect('imageDimWidth', 'imageDimHeight', 'imageDimAspect', 'imageDimensionsModal');
+    on('imageDimMode', 'change', (e) => {
+        $('imageDimAnchorLabel').style.display = e.target.value === 'canvas' ? 'block' : 'none';
     });
-    
-    document.getElementById('rightCollapseToggle').addEventListener('click', () => {
-        toggleSidebar('rightSidebar');
+    on('applyImageDimensionsBtn', 'click', applyImageDimensions);
+    on('cancelImageDimensionsBtn', 'click', () => UI.closeModal('imageDimensionsModal'));
+
+    // Effects dialog
+    on('effectSlider', 'input', () => Effects.updateEffectPreview(composeLayers));
+    on('effectPreview', 'change', () => Effects.updateEffectPreview(composeLayers));
+    on('applyEffectBtn', 'click', () => Effects.applyEffect(state, composeLayers, saveState, UI.closeModal));
+    on('cancelEffectBtn', 'click', MODAL_CANCEL.effectModal);
+
+    // New image dialog
+    on('newPreset', 'change', (e) => {
+        if (!e.target.value) return;
+        const [w, h] = e.target.value.split('x');
+        $('newWidth').value = w;
+        $('newHeight').value = h;
     });
-    
-    // Resize width/height linking
-    const resizeWidth = document.getElementById('resizeWidth');
-    const resizeHeight = document.getElementById('resizeHeight');
-    const maintainAspect = document.getElementById('maintainAspect');
-    let aspectRatio = 1;
-    
-    resizeWidth.addEventListener('focus', () => {
-        if (maintainAspect.checked) {
-            aspectRatio = resizeWidth.value / resizeHeight.value;
-        }
+    for (const id of ['newWidth', 'newHeight']) on(id, 'input', () => { $('newPreset').value = ''; });
+    on('newTransparent', 'change', e => { $('newBgColor').disabled = e.target.checked; });
+    on('createNewBtn', 'click', applyNewImage);
+    on('cancelNewBtn', 'click', () => UI.closeModal('newImageModal'));
+
+    // Save dialog
+    on('saveFormat', 'change', updateSaveOptions);
+    on('saveQuality', 'input', e => { $('qualityValue').textContent = e.target.value; });
+    on('saveFilename', 'input', e => { e.target.dataset.userEdited = '1'; });
+    on('applySaveBtn', 'click', applySave);
+    on('cancelSaveBtn', 'click', () => UI.closeModal('saveModal'));
+
+    // Metadata
+    on('addMetadataFieldBtn', 'click', () => hasWorkspace() && Metadata.showAddMetadataFieldModal());
+    on('applyAddMetadataFieldBtn', 'click', Metadata.applyAddMetadataField);
+    on('cancelAddMetadataFieldBtn', 'click', () => UI.closeModal('addMetadataFieldModal'));
+
+    // Panels & sidebars
+    document.querySelectorAll('.panel-header').forEach(header => {
+        header.addEventListener('click', () => UI.togglePanelSection(header.dataset.panel));
     });
-    
-    resizeWidth.addEventListener('input', () => {
-        if (maintainAspect.checked) {
-            resizeHeight.value = Math.round(resizeWidth.value / aspectRatio);
-        }
-    });
-    
-    resizeHeight.addEventListener('input', () => {
-        if (maintainAspect.checked) {
-            resizeWidth.value = Math.round(resizeHeight.value * aspectRatio);
-        }
-    });
-    
-    // Keyboard shortcuts
-    document.addEventListener('keydown', (e) => {
-        if (e.ctrlKey || e.metaKey) {
-            switch (e.key.toLowerCase()) {
-                case 'z':
-                    e.preventDefault();
-                    if (e.shiftKey) {
-                        redo();
-                    } else {
-                        undo();
-                    }
-                    break;
-                case 'y':
-                    e.preventDefault();
-                    redo();
-                    break;
-                case 's':
-                    e.preventDefault();
-                    saveImage();
-                    break;
-                case 'o':
-                    e.preventDefault();
-                    openImage();
-                    break;
-                case 'a':
-                    e.preventDefault();
-                    selectAll();
-                    break;
-            }
-        } else if (e.key === 'Delete' || e.key === 'Backspace') {
-            if (state && state.selection) {
-                e.preventDefault();
-                deleteSelection();
-            }
-        }
+    on('rightCollapseToggle', 'click', () => UI.toggleSidebar('rightSidebar'));
+
+    // Clicking the dimmed backdrop closes a dialog
+    document.querySelectorAll('.modal').forEach(modal => {
+        modal.addEventListener('mousedown', (e) => {
+            if (e.target === modal) (MODAL_CANCEL[modal.id] || (() => UI.closeModal(modal.id)))();
+        });
     });
 }
 
-// Start the application
 init();

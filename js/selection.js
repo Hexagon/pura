@@ -1,215 +1,185 @@
-// Selection tools module
+// Selection tools module (selection coordinates are local to the active layer)
+import { createCanvas } from './layers.js';
 
-// Create a rectangular selection
-export function createRectSelection(state, x, y, width, height) {
-    const layer = state.layers[state.activeLayerIndex];
-    
-    // Normalize coordinates (handle negative width/height)
-    const normalizedX = width < 0 ? x + width : x;
-    const normalizedY = height < 0 ? y + height : y;
-    const normalizedWidth = Math.abs(width);
-    const normalizedHeight = Math.abs(height);
-    
-    // Clamp to canvas bounds
-    const clampedX = Math.max(0, Math.min(normalizedX, layer.canvas.width));
-    const clampedY = Math.max(0, Math.min(normalizedY, layer.canvas.height));
-    const clampedWidth = Math.min(normalizedWidth, layer.canvas.width - clampedX);
-    const clampedHeight = Math.min(normalizedHeight, layer.canvas.height - clampedY);
-    
-    if (clampedWidth <= 0 || clampedHeight <= 0) {
-        state.selection = null;
-        return;
-    }
-    
-    // Store selection bounds and image data
-    state.selection = {
-        x: clampedX,
-        y: clampedY,
-        width: clampedWidth,
-        height: clampedHeight,
-        imageData: layer.ctx.getImageData(clampedX, clampedY, clampedWidth, clampedHeight)
-    };
-    state.selectionType = 'rect';
+function activeLayer(state) {
+    return state.layers[state.activeLayerIndex];
 }
 
-// Create a freeform selection
+function tracePath(ctx, path) {
+    ctx.beginPath();
+    ctx.moveTo(path[0].x, path[0].y);
+    for (let i = 1; i < path.length; i++) ctx.lineTo(path[i].x, path[i].y);
+    ctx.closePath();
+}
+
+// Add the selection shape as the current path on ctx (in layer coordinates)
+export function traceSelection(ctx, state) {
+    if (state.selectionType === 'freeform' && state.selectionPath) {
+        tracePath(ctx, state.selectionPath);
+    } else {
+        const s = state.selection;
+        ctx.beginPath();
+        ctx.rect(s.x, s.y, s.width, s.height);
+    }
+}
+
+// Restrict subsequent drawing on ctx to the selection. Caller must save/restore.
+export function clipToSelection(ctx, state) {
+    if (!state.selection) return;
+    traceSelection(ctx, state);
+    ctx.clip();
+}
+
+export function createRectSelection(state, x, y, width, height) {
+    const layer = activeLayer(state);
+    const x0 = Math.round(Math.min(x, x + width));
+    const y0 = Math.round(Math.min(y, y + height));
+    const x1 = Math.round(Math.max(x, x + width));
+    const y1 = Math.round(Math.max(y, y + height));
+
+    const cx0 = Math.max(0, x0);
+    const cy0 = Math.max(0, y0);
+    const cx1 = Math.min(layer.canvas.width, x1);
+    const cy1 = Math.min(layer.canvas.height, y1);
+
+    if (cx1 - cx0 <= 0 || cy1 - cy0 <= 0) {
+        clearSelection(state);
+        return;
+    }
+
+    state.selection = { x: cx0, y: cy0, width: cx1 - cx0, height: cy1 - cy0, imageData: null };
+    state.selectionPath = null;
+    state.selectionType = 'rect';
+    refreshSelectionPixels(state);
+}
+
 export function createFreeformSelection(state, path) {
     if (!path || path.length < 3) {
-        state.selection = null;
-        state.selectionPath = null;
+        clearSelection(state);
         return;
     }
-    
-    const layer = state.layers[state.activeLayerIndex];
-    
-    // Calculate bounding box
-    let minX = path[0].x, maxX = path[0].x;
-    let minY = path[0].y, maxY = path[0].y;
-    
-    for (const point of path) {
-        minX = Math.min(minX, point.x);
-        maxX = Math.max(maxX, point.x);
-        minY = Math.min(minY, point.y);
-        maxY = Math.max(maxY, point.y);
-    }
-    
-    const width = maxX - minX;
-    const height = maxY - minY;
-    
-    if (width <= 0 || height <= 0) {
-        state.selection = null;
-        state.selectionPath = null;
+    const layer = activeLayer(state);
+    const xs = path.map(p => p.x);
+    const ys = path.map(p => p.y);
+    const minX = Math.max(0, Math.floor(Math.min(...xs)));
+    const minY = Math.max(0, Math.floor(Math.min(...ys)));
+    const maxX = Math.min(layer.canvas.width, Math.ceil(Math.max(...xs)));
+    const maxY = Math.min(layer.canvas.height, Math.ceil(Math.max(...ys)));
+
+    if (maxX - minX <= 0 || maxY - minY <= 0) {
+        clearSelection(state);
         return;
     }
-    
-    // Get the full bounding box image data
-    const imageData = layer.ctx.getImageData(minX, minY, width, height);
-    
-    // Create a temporary canvas to mask the selection
-    const tempCanvas = document.createElement('canvas');
-    tempCanvas.width = width;
-    tempCanvas.height = height;
-    const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
-    
-    // Draw the path as a mask
-    tempCtx.beginPath();
-    tempCtx.moveTo(path[0].x - minX, path[0].y - minY);
-    for (let i = 1; i < path.length; i++) {
-        tempCtx.lineTo(path[i].x - minX, path[i].y - minY);
-    }
-    tempCtx.closePath();
-    tempCtx.fill();
-    
-    // Apply the mask to the image data
-    const maskData = tempCtx.getImageData(0, 0, width, height);
-    for (let i = 0; i < imageData.data.length; i += 4) {
-        if (maskData.data[i + 3] === 0) {
-            // Outside the selection path - make transparent
-            imageData.data[i + 3] = 0;
-        }
-    }
-    
-    state.selection = {
-        x: minX,
-        y: minY,
-        width: width,
-        height: height,
-        imageData: imageData
-    };
+
+    state.selection = { x: minX, y: minY, width: maxX - minX, height: maxY - minY, imageData: null };
     state.selectionPath = path;
     state.selectionType = 'freeform';
+    refreshSelectionPixels(state);
 }
 
-// Select all (entire layer)
+// Canvas containing only the selected pixels, sized to the selection bounds
+export function getSelectionCanvas(state, layer = activeLayer(state)) {
+    const s = state.selection;
+    const canvas = createCanvas(s.width, s.height);
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    ctx.save();
+    ctx.translate(-s.x, -s.y);
+    clipToSelection(ctx, state);
+    ctx.drawImage(layer.canvas, 0, 0);
+    ctx.restore();
+    return canvas;
+}
+
+// Re-read the selected pixels from the layer (call before using selection.imageData)
+export function refreshSelectionPixels(state) {
+    if (!state.selection) return;
+    const s = state.selection;
+    s.imageData = getSelectionCanvas(state)
+        .getContext('2d', { willReadFrequently: true })
+        .getImageData(0, 0, s.width, s.height);
+}
+
+export function translateSelection(state, dx, dy) {
+    if (!state.selection) return;
+    state.selection.x += dx;
+    state.selection.y += dy;
+    if (state.selectionPath) {
+        state.selectionPath = state.selectionPath.map(p => ({ x: p.x + dx, y: p.y + dy }));
+    }
+}
+
 export function selectAll(state) {
-    const layer = state.layers[state.activeLayerIndex];
+    const layer = activeLayer(state);
+    if (!layer) return;
     createRectSelection(state, 0, 0, layer.canvas.width, layer.canvas.height);
 }
 
-// Clear selection
 export function clearSelection(state) {
     state.selection = null;
     state.selectionPath = null;
+    if (state.selectionCtx) {
+        state.selectionCtx.clearRect(0, 0, state.selectionCanvas.width, state.selectionCanvas.height);
+    }
 }
 
-// Delete selected area
+// Erase the selected pixels from the active layer
+export function eraseSelectionArea(state, layer = activeLayer(state)) {
+    layer.ctx.save();
+    clipToSelection(layer.ctx, state);
+    layer.ctx.clearRect(0, 0, layer.canvas.width, layer.canvas.height);
+    layer.ctx.restore();
+}
+
 export function deleteSelection(state, composeLayers, saveState) {
     if (!state.selection) return false;
-    
-    const layer = state.layers[state.activeLayerIndex];
-    
-    if (state.selectionType === 'rect') {
-        // Clear rectangular area
-        layer.ctx.clearRect(state.selection.x, state.selection.y, state.selection.width, state.selection.height);
-    } else if (state.selectionType === 'freeform' && state.selectionPath) {
-        // Clear freeform area
-        layer.ctx.save();
-        layer.ctx.globalCompositeOperation = 'destination-out';
-        layer.ctx.beginPath();
-        layer.ctx.moveTo(state.selectionPath[0].x, state.selectionPath[0].y);
-        for (let i = 1; i < state.selectionPath.length; i++) {
-            layer.ctx.lineTo(state.selectionPath[i].x, state.selectionPath[i].y);
-        }
-        layer.ctx.closePath();
-        layer.ctx.fill();
-        layer.ctx.restore();
-    }
-    
-    clearSelection(state);
+    eraseSelectionArea(state);
     composeLayers();
     saveState();
-    
     return true;
 }
 
-// Draw selection outline (marching ants effect)
+export function fillSelection(state, color, composeLayers, saveState) {
+    if (!state.selection) return false;
+    const layer = activeLayer(state);
+    layer.ctx.save();
+    clipToSelection(layer.ctx, state);
+    layer.ctx.globalAlpha = state.opacity;
+    layer.ctx.fillStyle = color;
+    layer.ctx.fillRect(0, 0, layer.canvas.width, layer.canvas.height);
+    layer.ctx.restore();
+    composeLayers();
+    saveState();
+    return true;
+}
+
+// Marching ants on the selection overlay (overlay is in workspace coordinates)
 export function drawSelectionOutline(state, timestamp = 0) {
+    const ctx = state.selectionCtx;
+    if (!ctx) return;
+    ctx.clearRect(0, 0, state.selectionCanvas.width, state.selectionCanvas.height);
     if (!state.selection) return;
-    
-    const ctx = state.previewCtx;
-    ctx.clearRect(0, 0, state.previewCanvas.width, state.previewCanvas.height);
-    
-    // Marching ants effect
-    const dashOffset = -(timestamp / 50) % 16; // Animate dash offset
-    
+
+    const layer = activeLayer(state);
+    const dashOffset = -(timestamp / 50) % 16;
+    // Keep the outline 1 screen pixel wide regardless of zoom
+    const lineWidth = 1 / (state.zoom || 1);
+
     ctx.save();
-    ctx.strokeStyle = '#000000';
-    ctx.lineWidth = 1;
-    ctx.setLineDash([8, 8]);
-    ctx.lineDashOffset = dashOffset;
-    
-    if (state.selectionType === 'rect') {
-        ctx.strokeRect(state.selection.x, state.selection.y, state.selection.width, state.selection.height);
-    } else if (state.selectionType === 'freeform' && state.selectionPath) {
-        ctx.beginPath();
-        ctx.moveTo(state.selectionPath[0].x, state.selectionPath[0].y);
-        for (let i = 1; i < state.selectionPath.length; i++) {
-            ctx.lineTo(state.selectionPath[i].x, state.selectionPath[i].y);
-        }
-        ctx.closePath();
+    ctx.translate((layer?.offsetX || 0) + 0.5 * lineWidth, (layer?.offsetY || 0) + 0.5 * lineWidth);
+    ctx.lineWidth = lineWidth;
+    ctx.setLineDash([4 * lineWidth, 4 * lineWidth]);
+    for (const [color, offset] of [['#ffffff', 0], ['#000000', 4]]) {
+        ctx.strokeStyle = color;
+        ctx.lineDashOffset = (dashOffset + offset) * lineWidth;
+        traceSelection(ctx, state);
         ctx.stroke();
     }
-    
-    // Draw white outline underneath for contrast
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineDashOffset = dashOffset + 8;
-    
-    if (state.selectionType === 'rect') {
-        ctx.strokeRect(state.selection.x, state.selection.y, state.selection.width, state.selection.height);
-    } else if (state.selectionType === 'freeform' && state.selectionPath) {
-        ctx.beginPath();
-        ctx.moveTo(state.selectionPath[0].x, state.selectionPath[0].y);
-        for (let i = 1; i < state.selectionPath.length; i++) {
-            ctx.lineTo(state.selectionPath[i].x, state.selectionPath[i].y);
-        }
-        ctx.closePath();
-        ctx.stroke();
-    }
-    
     ctx.restore();
 }
 
-// Check if point is inside selection
 export function isPointInSelection(state, x, y) {
     if (!state.selection) return false;
-    
-    if (state.selectionType === 'rect') {
-        return x >= state.selection.x && x <= state.selection.x + state.selection.width &&
-               y >= state.selection.y && y <= state.selection.y + state.selection.height;
-    } else if (state.selectionType === 'freeform' && state.selectionPath) {
-        // Use point-in-polygon algorithm
-        let inside = false;
-        const path = state.selectionPath;
-        for (let i = 0, j = path.length - 1; i < path.length; j = i++) {
-            const xi = path[i].x, yi = path[i].y;
-            const xj = path[j].x, yj = path[j].y;
-            
-            const intersect = ((yi > y) !== (yj > y))
-                && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
-            if (intersect) inside = !inside;
-        }
-        return inside;
-    }
-    
-    return false;
+    const ctx = state.selectionCtx || createCanvas(1, 1).getContext('2d');
+    traceSelection(ctx, state);
+    return ctx.isPointInPath(x, y);
 }

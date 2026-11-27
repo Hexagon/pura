@@ -8,73 +8,48 @@ A powerful, client-side image editor built with vanilla JavaScript and the [cros
 
 ## Features
 
-- **Layer Management**: Create, delete, reorder, and toggle visibility of multiple layers
-- **Drawing Tools**: 
-  - Brush and eraser with adjustable size and opacity
-  - Shape tools (rectangle, circle, line)
-  - Text tool (coming soon)
-- **Transform Operations**:
-  - Resize layers with cross-image integration
-  - Rotate 90 degrees
-  - Flip horizontal/vertical
-- **Image Effects**:
-  - Grayscale
-  - Invert colors
-  - Brightness adjustment
-  - Contrast adjustment
-  - Blur effect
-- **File Operations**:
-  - Open images (PNG, JPEG, WebP)
-  - Save as PNG
-  - Create new canvas
-- **History**: Undo/Redo support
+- **Layers**: add, duplicate, reorder (drag & drop), rename, hide, merge down, flatten; per-layer
+  opacity, 16 blend modes, thumbnails and frame durations for animation export
+- **Tools**: brush & eraser (with live size cursor), fill, linear/radial gradient, rectangle, ellipse,
+  line (Shift/Alt constraints, outline or filled), multi-line text, eyedropper, layer picker, move
+- **Selections**: rectangular and lasso; painting, fills and filters stay inside the selection;
+  move/nudge selected pixels, delete, fill, copy/cut/paste, crop to selection
+- **Adjustments & filters** with live preview: brightness, contrast, exposure, saturation, hue,
+  box/gaussian blur, median, sharpen, threshold, posterize, pixelate, grayscale, sepia, invert, auto levels
+- **Image operations**: canvas resize with anchor, scale image, rotate/flip image or layer, resize layer
+- **Files**: open PNG, JPEG, WebP, GIF, APNG, TIFF, BMP, ICO, QOI, PCX, Netpbm, AVIF, HEIC; animated GIF/APNG
+  and multi-page TIFF open as layers and can be exported again; drag & drop and clipboard paste
+- **Workspaces**: multiple images in tabs, unsaved-change indicators, metadata editor
+- **View**: zoom to cursor (Ctrl+wheel), fit to window, space-drag panning, pixel-accurate zoom
+- **History**: undo/redo for every action
 
 ## Live Demo
 
 Visit [https://puraeditor.com/](https://puraeditor.com/) to try it out!
 
-## Usage
-
-1. Click "Open" to load an image, or "New" to create a blank canvas
-2. Select a tool from the left sidebar
-3. Adjust brush size, opacity, and colors as needed
-4. Use the layers panel on the right to manage layers
-5. Apply effects and transforms from the right sidebar
-6. Save your work using the "Save" button
-
 ## Keyboard Shortcuts
 
-- `Ctrl/Cmd + Z`: Undo
-- `Ctrl/Cmd + Shift + Z` or `Ctrl/Cmd + Y`: Redo
-- `Ctrl/Cmd + S`: Save image
-- `Ctrl/Cmd + O`: Open image
+Press `?` in the app for the full list. Highlights:
+
+| Keys | Action |
+| --- | --- |
+| `V` `M` `L` `B` `E` `G` `Shift+G` `U` `O` `N` `T` `I` `A` | Move, select, lasso, brush, eraser, fill, gradient, rectangle, ellipse, line, text, eyedropper, pick layer |
+| `[` / `]` | Brush size |
+| `X` / `D` | Swap / reset colours |
+| `Ctrl+Z`, `Ctrl+Shift+Z` / `Ctrl+Y` | Undo / redo |
+| `Ctrl+C` / `X` / `V` | Copy / cut / paste |
+| `Ctrl+A` / `Ctrl+D` / `Delete` | Select all / deselect / clear selection |
+| `Ctrl+J`, `Ctrl+E`, `Ctrl+Shift+E` | Duplicate layer, merge down, flatten |
+| `Ctrl+O`, `Ctrl+Shift+O`, `Ctrl+S` | Open, import as layer, save |
+| `Ctrl+0` / `Ctrl+1` / Ctrl+wheel | Fit / actual pixels / zoom |
 
 ## Technology
 
-- Pure vanilla JavaScript (no frameworks)
-- ES6 modules for clean code organization
-- [cross-image@0.4.0](https://github.com/cross-org/image) for image processing
-- HTML5 Canvas API for rendering
-- CSS3 for modern UI styling
+- Pure vanilla JavaScript (ES modules, no build step, no frameworks)
+- [@cross/image 0.5.0](https://jsr.io/@cross/image) for decoding, encoding and filters
+- HTML5 Canvas for rendering and compositing
 
-## Architecture
-
-Pura uses a modular architecture with ES6 modules:
-- **No build process**: Modules load directly in the browser
-- **8 focused modules**: Each handles a specific responsibility
-- **1,091 line main file**: Down from 1,764 (38% reduction)
-
-```
-js/
-├── constants.js    - Shared constants and library imports
-├── state.js        - State management and workspace handling
-├── layers.js       - Layer operations and composition
-├── drawing.js      - Drawing tools (brush, eraser, shapes)
-├── file-io.js      - File import/export with multi-frame support
-├── effects.js      - Image effects and transforms
-├── history.js      - Undo/redo functionality
-└── ui.js           - UI helpers and updates
-```
+See [AGENTS.md](AGENTS.md) for the architecture and contribution guidelines.
 
 ## Development
 
