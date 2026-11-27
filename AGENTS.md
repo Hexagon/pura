@@ -1,350 +1,126 @@
 # Agent Guidelines for Pura
 
+Read this first — it is meant to be enough context to work on Pura without re-exploring the repo.
+
 ## Project Overview
 
-Pura is a client-side image editor built with vanilla JavaScript. It runs entirely in the browser with no build process.
+Pura is a client-side image editor in vanilla JavaScript (ES modules, no build step), deployed as static
+files to GitHub Pages (`https://puraeditor.com/`, workflow `.github/workflows/pages.yml`, triggers on
+push to `main`). Everything runs in the browser; nothing is uploaded.
 
-## Architecture Principles
-
-### Keep It Simple
-- **No frameworks**: Pure vanilla JavaScript only
-- **No build process**: Direct browser execution via ES6 modules
-- **No bundling**: CDN dependencies loaded directly
-
-### Core Components
-- `index.html` - Application structure and UI layout
-- `styles.css` - Dark theme styling
-- `app.js` - Main application entry point (1091 lines, reduced from 1764 via modularization)
-- `js/` - Modular JavaScript files:
-  - `constants.js` - Shared constants and imports (Image library, multi-frame formats)
-  - `state.js` - State management and workspace handling
-  - `layers.js` - Layer operations and management
-  - `drawing.js` - Drawing tools and canvas operations (brush, eraser, shapes, move)
-  - `file-io.js` - File import/export operations (open, save, import layer, multi-frame support)
-  - `effects.js` - Image effects and transforms (resize, rotate, flip, grayscale, invert, blur, brightness, contrast)
-  - `history.js` - Undo/redo functionality
-  - `ui.js` - UI updates and event handling
-
-### State Management
-Single global `globalState` object in `app.js` containing:
-- Workspaces map (each workspace ID -> workspace state)
-- Active workspace ID
-- Next workspace ID counter
-
-Each workspace state contains:
-- Canvas and context references
-- Layer array with off-screen canvases
-- Active tool and drawing parameters
-- History stack for undo/redo
-- Metadata object (title, author, description, copyright)
-
-### Layer Architecture
-- Each layer is an off-screen `<canvas>` element
-- Layers compose onto main canvas on-demand
-- Bottom-to-top rendering order
-- Each layer has a duration property (milliseconds) for animation export
-
-### Module Architecture
-The application uses ES6 modules for code organization:
-- **No build process**: Modules load directly in the browser via `type="module"`
-- **Clean separation**: Each module has a focused responsibility
-- **Import/export**: Standard ES6 import/export syntax
-- **Shared state**: The `state` object is imported where needed
-- **Entry point**: `app.js` initializes and coordinates all modules
-- **Completed modularization**: All major features have been extracted into focused modules, reducing app.js from 1764 to 1091 lines (38% reduction)
-
-Module dependencies flow:
 ```
-app.js (main - 1091 lines)
-  ├── js/constants.js (8 lines - shared constants)
-  ├── js/state.js (65 lines - core state, no dependencies)
-  ├── js/layers.js (104 lines - depends on state)
-  ├── js/drawing.js (179 lines - drawing tools)
-  ├── js/file-io.js (340 lines - file operations)
-  ├── js/effects.js (240 lines - effects and transforms)
-  ├── js/history.js (93 lines - depends on state, layers)
-  └── js/ui.js (79 lines - UI helpers)
+index.html      UI markup: SVG icon sprite (<symbol id="i-*">), top bar, tab bar, options bar,
+                tool rail, canvas area, inspector (right sidebar), status bar, all modals
+styles.css      Dark theme built on CSS custom properties (see "Design system")
+app.js          Entry point: workspaces, rendering glue, layers panel, tools, pointer/keyboard input,
+                zoom/pan, clipboard, file drop, image ops, all event wiring
+js/
+  constants.js  Image library import (+ MIN_LAYER_DURATION, MULTI_FRAME_FORMATS, OPENABLE_EXTENSIONS)
+  state.js      globalState (workspaces map), createWorkspaceState(), SHARED_TOOL_SETTINGS
+  layers.js     Layer objects, compositing (offset/opacity/blend), duplicate/move/merge/flatten,
+                pickLayerAt, thumbnails, createCanvas/cloneCanvas helpers, BLEND_MODES
+  drawing.js    Tools: brush/eraser (snapshot-based strokes), fill (typed-array flood fill),
+                gradient, rect/ellipse/line, text, eyedropper, pointer (pick layer), move
+                (layer or floating selection), rect/lasso selection; startDrawing/draw/stopDrawing
+  selection.js  Selection model, clipToSelection(), getSelectionCanvas(), marching ants
+  effects.js    EFFECTS (slider effects) / INSTANT_EFFECTS tables, live-preview effect session,
+                layer transforms, whole-image ops (crop, canvas resize w/ anchor, scale, rotate, flip)
+  file-io.js    Open (multi-frame aware), import as layers, encode/save, FORMATS table
+  history.js    Undo/redo snapshots (max 50)
+  metadata.js   Metadata helpers + property-grid editor in the inspector
+  ui.js         Modals, toasts, sidebar/panel collapse persistence, undo/redo button state
 ```
 
-## Code Style
+## Architecture
 
-### JavaScript
-- ES6+ syntax (modules, async/await, arrow functions)
-- Functional approach where possible
-- Clear, descriptive function names
-- Minimal comments (code should be self-documenting)
+### Workspaces
+- `globalState.workspaces` maps id → workspace state; `'start'` is the welcome tab (no layers, can't close).
+- **Each workspace owns its own display canvas** (`state.canvas`, class `.main-canvas`) plus two
+  overlay canvases: `previewCanvas` (tool previews) and `selectionCanvas` (marching ants).
+  `switchWorkspace()` swaps these elements in `#canvasWrapper`. Overlays are resized by `syncOverlaySize()`.
+- `app.js` keeps a module-level `state` pointing at the active workspace. Guard actions with `hasWorkspace()`.
+- Tool settings listed in `SHARED_TOOL_SETTINGS` are copied to the new workspace on tab switch.
+- `state.dirty` drives the "•" tab marker, close confirmation and the `beforeunload` warning.
 
-### Canvas Operations
-- Always use `{ willReadFrequently: true }` context option
-- Compose layers via `globalAlpha` for opacity
-- Clear and redraw on each operation
+### Layers
+- Layer: `{ id, name, canvas, ctx, visible, opacity, blendMode, isBackground, duration, offsetX, offsetY }`.
+- A layer canvas may be a different size from the image and positioned via `offsetX/offsetY`
+  (imports, pastes, rotated layers). Convert workspace → layer coords by subtracting the offset.
+- `state.layers[0]` is the bottom. The panel uses `flex-direction: column-reverse` so the top layer shows first.
+- `composeLayers()` draws only the true image onto the display canvas — never draw overlays there.
+  Export and eyedropper read from it / `getFlattenedCanvas()`.
+- Layer bounds outline is a CSS div (`#layerBounds`), shown only when the layer doesn't match the canvas.
 
-### Event Handling
-- Use event delegation where appropriate
-- Mouse events for drawing: `mousedown`, `mousemove`, `mouseup`, `mouseleave`
-- Keyboard shortcuts via `keydown` with modifier checks
+### Selections
+- `state.selection = { x, y, width, height, imageData }` in **active-layer coordinates**;
+  `selectionType` is `'rect'` or `'freeform'` (`selectionPath` holds the polygon).
+- Painting tools, fill, gradient, text and effects are clipped to the selection via
+  `Selection.clipToSelection(ctx, state)` inside `ctx.save()/restore()`.
+- Move tool with a selection lifts pixels into `state.floating`, previews on the overlay, drops on release.
+
+### Rendering, zoom, input
+- Zoom sets the CSS width/height of the three canvases (not a transform), so the container scrolls.
+  `.canvas-wrapper { margin: auto }` centres small images. `zoomTo(z, clientX, clientY)` keeps the
+  point under the cursor fixed. `.pixelated` is applied at ≥200%.
+- Pointer events are bound on `#canvasWrapper` with pointer capture (strokes continue outside the canvas).
+  Space+drag / middle-drag pans; Ctrl+wheel zooms.
+- Keyboard: `onKeyDown` in app.js. It ignores typing targets (`isTypingTarget`). When a modal is open,
+  Esc cancels and Enter clicks the first button in `.modal-buttons` (the primary action).
+
+### History
+- Call `saveState()` (app.js wrapper) after every user action that changes pixels or layer properties,
+  and only then (no history for clicks that change nothing). It also refreshes thumbnails/dirty state.
+- `undo()/redo()` restore snapshots and clear the selection; then `refresh()` rebuilds UI.
+
+### Effects
+- Add a slider effect by adding an entry to `EFFECTS` in `js/effects.js`
+  (`{ label, unit?, min, max, value, apply(image, v) }` for @cross/image methods, or
+  `raw(data, w, h, v)` for direct RGBA manipulation). Buttons are generated automatically.
+- One-click effects go in `INSTANT_EFFECTS`. Effects respect the selection via `writeResult()`.
+- The effect dialog (`.modal.floating`) has no backdrop so the live preview is visible; Cancel restores
+  the original pixels.
+
+### Files
+- `openFiles()` tries `Image.readFrames()` (GIF/APNG/multi-page TIFF → one layer per frame, using
+  `frameMetadata.left/top/delay`) and falls back to `Image.read()`.
+- `encodeImage()` exports the flattened image, or one frame per visible layer for GIF/APNG/TIFF.
+- Add an export format by extending `FORMATS` in `file-io.js` and the `#saveFormat` select.
+- AVIF/HEIC encoding depends on the browser's canvas encoder; unsupported ones are disabled at startup.
 
 ## Dependencies
 
-### External Libraries
-- **cross-image@0.4.0**: Image processing (resize, format conversion)
-  - Load from: `https://cdn.jsdelivr.net/npm/cross-image@0.4.0/esm/mod.js`
-  - Trust CDN availability - no vendor fallbacks
-  - Use for: resize operations, image I/O (PNG/JPEG/WebP/GIF/APNG/TIFF/BMP)
-  - Supports multi-frame images (animated GIF, APNG, multi-page TIFF)
+- **cross-image 0.5.1** (npm; same code as `@cross/image` on JSR), loaded in `js/constants.js` from
+  `https://cdn.jsdelivr.net/npm/cross-image@0.5.1/esm/mod.js`. Trust CDN availability — no vendored fallback.
+- Nothing else. Do not add frameworks, build tools, utility libraries, CSS frameworks, TypeScript,
+  preprocessors or linting configs. Do not vendor dependencies.
 
-### No Additional Dependencies
-Do not add:
-- UI frameworks (React, Vue, etc.)
-- Build tools (webpack, vite, etc.)
-- Utility libraries (lodash, jQuery, etc.)
-- CSS frameworks (Bootstrap, Tailwind, etc.)
+## Design system
 
-## Feature Development
+- Tokens live in `:root` in `styles.css` (`--bg-0..4`, `--border`, `--text`, `--text-2/3`, `--accent`,
+  `--accent-grad`, radii, `--shadow`). Use tokens instead of raw colours.
+- Brand: violet → blue gradient (`--accent-grad`, matches `img/pura.png`), near-black neutral surfaces.
+- Icons: inline SVG sprite at the top of `<body>`; use `<svg class="icon"><use href="#i-name"/></svg>`.
+  Draw new icons on a 24×24 grid with stroke `currentColor` (no emoji in the UI).
+- Layout: top bar (file/edit/zoom pill) → tab bar → contextual options bar (`.tool-options-group[data-for="tool …"]`,
+  shown by `setTool()`) → tool rail | canvas | inspector panels (`.panel-section`, collapsible, persisted in
+  localStorage) → status bar.
+- Button classes: `.icon-btn` (top bar), `.rail-btn` (tools), `.mini-btn` (small icon actions),
+  `.chip-btn` (pill buttons), `.tool-btn` (labelled inspector buttons). Primary modal action = first button.
 
-### Adding Drawing Tools
-1. Add button to tools panel in `index.html`
-2. Update tool selection in event listeners
-3. Implement in `startDrawing`, `draw`, and `stopDrawing` functions
-4. Use active layer canvas, then call `composeLayers()`
+## Adding things (checklists)
 
-### Adding Effects
-1. Add button to effects panel
-2. Create effect function that operates on `ImageData`
-3. Apply to active layer via `layer.ctx.putImageData()`
-4. Call `composeLayers()` and `saveState()`
-
-### Adding Transforms
-1. Add button to transforms panel
-2. Create temporary canvas for transformation
-3. Apply transform, update layer canvas
-4. Call `composeLayers()` and `saveState()`
-
-## History Management
-
-- Always call `saveState()` after user actions
-- Limit: 50 history entries (configurable via `state.maxHistory`)
-- Store complete layer snapshots (canvas copies)
-- Update UI buttons on history changes
-
-## UI Guidelines
-
-### Dark Theme
-- Background: `#1e1e1e`, `#252525`, `#2d2d2d`
-- Text: `#e0e0e0`, `#b0b0b0`, `#a0a0a0`
-- Accent: `#0066cc` (active states)
-- Maintain existing color palette
-
-### Layout
-- Three-column: tools (left), canvas (center), layers/effects (right)
-- Top toolbar for file operations and undo/redo
-- Tab bar for workspace management (below toolbar)
-- Modals for dialogs (new image, resize, effects with sliders, save options, metadata)
-- Collapsible sidebars with toggle buttons (state persisted in localStorage)
-
-### Workspace System
-- Multiple independent workspaces with tabs
-- Start tab: welcome screen, cannot be closed, no canvas/layers
-- Workspace tabs: created via New/Open, closeable, independent state
-- Each workspace has: canvas, layers, history, metadata, tools state
-- Import Layer: adds images to current workspace without changing dimensions
+- **Tool**: `.rail-btn[data-tool]` in index.html (title with shortcut) → optional options group with
+  `data-for` → `TOOL_KEYS`/hint in app.js `setTool` → behaviour in `drawing.js` start/draw/stop
+  (use layer coords, clip to selection, set `changed = true` so history is saved).
+- **Layer/image operation**: implement in `layers.js` or `effects.js`, call through `layerAction()`
+  or `imageOp()` in app.js (these refresh UI and save history).
+- **Shortcut**: add to `onKeyDown` and to the `#shortcutsModal` list in index.html.
 
 ## Testing
 
-### Manual Testing Required
-- Test in modern browsers (Chrome, Firefox, Safari, Edge)
-- Verify drawing tools work on canvas
-- Check layer composition and visibility
-- Test effects on individual layers
-- Verify undo/redo functionality
-- Test file open/save operations
+No test infrastructure is committed; test manually in a browser (`python3 -m http.server 8000`).
+For automated checks, Playwright works well: when the CDN isn't reachable, `npm pack cross-image@0.5.1`
+and intercept `https://cdn.jsdelivr.net/npm/cross-image@0.5.1/esm/**` to serve files from `package/esm/`. Verify: drawing tools, selections + clipping, layers (reorder/merge/blend),
+undo/redo, effects preview/cancel, open/save in several formats incl. animated GIF round-trip.
 
-### No Automated Tests
-The project has no test infrastructure. Manual testing only.
-
-## Deployment
-
-### GitHub Pages
-- Automatic deployment via `.github/workflows/pages.yml`
-- Triggers on push to `main` branch
-- No build step - deploys static files as-is
-- URL: `https://puraeditor.com/`
-
-### Local Development
-```bash
-python3 -m http.server 8000
-# Then open http://localhost:8000
-```
-
-## File Operations
-
-### Opening Images
-1. User selects file via `<input type="file">`
-2. Read as `ArrayBuffer`, convert to `Uint8Array`
-3. Use `cross-image` to parse format
-4. For multi-frame images (GIF, APNG, TIFF), load each frame as a separate layer
-5. For single-frame images, create new layer with image data
-6. Adjust canvas size if needed
-
-### Saving Images
-1. User opens save dialog with format selection
-2. Formats supported: PNG, JPEG, WebP, GIF, APNG, TIFF, BMP
-3. Quality slider available for JPEG and WebP (0-100)
-4. Multi-frame export option for GIF, APNG, and TIFF
-5. Get `ImageData` from composed main canvas or individual layers
-6. Create `cross-image` instance with `Image.fromRGBA()`
-7. For animations, use layer durations (default: 100ms)
-8. Save with selected format using `image.save(format, options)`
-9. Create blob and trigger download
-
-### Multi-Frame Support
-- **Opening**: Multi-frame TIFF, GIF, and APNG files are automatically detected and loaded as separate layers
-- **Saving**: Enable "Export as animation/multi-page" checkbox in save dialog
-  - GIF/APNG: Uses layer durations for frame timing
-  - TIFF: Saves layers as multi-page document
-  - Only visible layers are included in export
-
-## Common Patterns
-
-### Workspace Management
-```javascript
-// Create a new workspace
-const workspaceId = createWorkspace('Workspace Name', 800, 600, '#FFFFFF');
-
-// Switch to a workspace
-switchWorkspace(workspaceId);
-
-// Close a workspace (except start tab)
-closeWorkspace(workspaceId);
-
-// Get current workspace state
-const currentState = getState(); // or use global 'state' variable
-
-// Update tab bar after changes
-updateTabBar();
-```
-
-### Import Layer Pattern
-```javascript
-// Import image as layer (doesn't change canvas dimensions)
-async function handleImportLayer(e) {
-    const file = e.target.files[0];
-    const image = await Image.read(uint8Array);
-    
-    // For single-frame: create one layer
-    const layer = createLayer(file.name);
-    // Draw image onto layer (clipped if larger than canvas)
-    layer.ctx.drawImage(tempCanvas, 0, 0);
-    
-    // For multi-frame: create multiple layers
-    for (const frame of image.frames) {
-        const layer = createLayer(`${file.name} - Frame ${i + 1}`);
-        layer.duration = frame.duration;
-        layer.ctx.drawImage(frameCanvas, 0, 0);
-    }
-}
-```
-
-### Creating UI Elements
-```javascript
-const button = document.createElement('button');
-button.className = 'tool-btn';
-button.textContent = 'Tool Name';
-button.addEventListener('click', handleClick);
-```
-
-### Layer Operations
-```javascript
-const layer = state.layers[state.activeLayerIndex];
-const imageData = layer.ctx.getImageData(0, 0, layer.canvas.width, layer.canvas.height);
-// Modify imageData.data...
-layer.ctx.putImageData(imageData, 0, 0);
-composeLayers();
-saveState();
-```
-
-### Save Dialog Pattern
-```javascript
-// Show save dialog
-function saveImage() {
-    document.getElementById('saveModal').classList.add('active');
-}
-
-// Apply save with user's selections
-async function applySaveImage() {
-    const format = document.getElementById('saveFormat').value;
-    const quality = parseInt(document.getElementById('saveQuality').value);
-    const multiFrame = document.getElementById('saveMultiFrame').checked;
-    // ... encode and download
-}
-```
-
-### Metadata Management
-```javascript
-// Metadata stored in state.metadata object
-state.metadata = {
-    title: '',
-    author: '',
-    description: '',
-    copyright: ''
-};
-
-// Applied to images during save
-if (state.metadata.title) {
-    image.metadata = { ...state.metadata };
-}
-```
-
-### Collapsible Sidebars
-```javascript
-function toggleSidebar(sidebarId) {
-    const sidebar = document.getElementById(sidebarId);
-    sidebar.classList.toggle('collapsed');
-    localStorage.setItem(`${sidebarId}-collapsed`, sidebar.classList.contains('collapsed'));
-}
-
-// Restore on init
-function restoreUIState() {
-    const isCollapsed = localStorage.getItem('leftSidebar-collapsed') === 'true';
-    if (isCollapsed) {
-        document.getElementById('leftSidebar').classList.add('collapsed');
-    }
-}
-```
-
-### Modal Interactions
-```javascript
-function showModal(modalId) {
-    document.getElementById(modalId).classList.add('active');
-}
-
-function closeModal(modalId) {
-    document.getElementById(modalId).classList.remove('active');
-}
-```
-
-## What NOT to Do
-
-❌ Add build tools or compilation steps  
-❌ Introduce frameworks or large libraries  
-❌ Vendor dependencies locally  
-❌ Add backend/server functionality  
-❌ Use TypeScript or JSX  
-❌ Add CSS preprocessors  
-❌ Add linting configs (keep it simple)  
-
-## Performance Considerations
-
-- Use `composeLayers()` sparingly - only after changes
-- Limit history snapshots to prevent memory issues
-- Canvas operations are synchronous - keep them fast
-- For large images, consider showing loading indicators
-
-## Browser Compatibility
-
-Target modern browsers with ES6 module support:
-- Chrome/Edge 61+
-- Firefox 60+
-- Safari 11+
-
-No polyfills or transpilation needed.
+Target browsers: current Chrome, Edge, Firefox, Safari (ES modules, pointer events, `:has()`).

@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Pura - Free Online Image Editor | Multi-layer Image Editing in Your Browser</title>
-    <meta name="description" content="Pura is a powerful, free online image editor with multi-layer support, drawing tools, effects, and filters. Edit images directly in your browser with no installation required. Supports PNG, JPEG, WebP, GIF, APNG, TIFF, HEIC, and AVIF formats.">
+    <meta name="description" content="Pura is a powerful, free online image editor with multi-layer support, drawing tools, effects, and filters. Edit images directly in your browser with no installation required. Supports PNG, JPEG, WebP, GIF, APNG, TIFF, BMP, ICO, QOI, HEIC, and AVIF formats.">
     <meta name="keywords" content="image editor, online image editor, photo editor, free image editor, browser image editor, layer editor, drawing tools, image effects, PNG editor, JPEG editor, WebP editor, GIF editor, APNG editor">
     <meta name="author" content="Pura">
     <link rel="canonical" href="https://puraeditor.com/">
@@ -26,278 +26,297 @@
     <link rel="stylesheet" href="styles.css">
     <script async src="https://track.webpulseanalytics.com/client/693cb84888e6a22b46430852" type="module"></script>
 </head>
-<body>
+<body class="no-workspace">
+    <svg xmlns="http://www.w3.org/2000/svg" style="display:none">
+        <symbol id="i-new" viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M12 12v6M9 15h6"/></symbol>
+        <symbol id="i-open" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M3 10h18"/></symbol>
+        <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="M21 15l-5-5L5 21"/></symbol>
+        <symbol id="i-save" viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></symbol>
+        <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 14L4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-4"/></symbol>
+        <symbol id="i-redo" viewBox="0 0 24 24"><path d="M15 14l5-5-5-5"/><path d="M20 9H9a5 5 0 0 0 0 10h4"/></symbol>
+        <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></symbol>
+        <symbol id="i-paste" viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 2h6v4H9z"/></symbol>
+        <symbol id="i-crop" viewBox="0 0 24 24"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/></symbol>
+        <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+        <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+        <symbol id="i-fit" viewBox="0 0 24 24"><path d="M8 3H3v5M21 8V3h-5M16 21h5v-5M3 16v5h5"/></symbol>
+        <symbol id="i-keyboard" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M6 9h.01M10 9h.01M14 9h.01M18 9h.01M6 13h.01M10 13h.01M14 13h.01M18 13h.01M8 16h8"/></symbol>
+        <symbol id="i-panel" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M15 3v18"/></symbol>
+        <symbol id="i-pointer" viewBox="0 0 24 24"><path d="M5 3l6.5 17 2.4-7.1L21 10.5z"/></symbol>
+        <symbol id="i-move" viewBox="0 0 24 24"><path d="M12 2v20M2 12h20M9 5l3-3 3 3M9 19l3 3 3-3M5 9l-3 3 3 3M19 9l3 3-3 3"/></symbol>
+        <symbol id="i-select" viewBox="0 0 24 24"><path d="M4 8V5a1 1 0 0 1 1-1h3M12 4h0M16 4h3a1 1 0 0 1 1 1v3M20 12h0M20 16v3a1 1 0 0 1-1 1h-3M12 20h0M8 20H5a1 1 0 0 1-1-1v-3M4 12h0"/></symbol>
+        <symbol id="i-lasso" viewBox="0 0 24 24"><path d="M7 17.5C4 16.3 2 14 2 11.5 2 7.4 6.5 4 12 4s10 3.4 10 7.5S17.5 19 12 19c-1 0-2-.1-3-.3"/><circle cx="6" cy="18" r="2"/><path d="M6 20c0 1.2-.6 2-2 2"/></symbol>
+        <symbol id="i-brush" viewBox="0 0 24 24"><path d="M18.4 2.6a2 2 0 0 1 3 3L12 15l-3-3z"/><path d="M9 12c-2.2 0-4 1.6-4 4 0 1.4-1 2.4-3 3 4.5 2 9.5.6 10-4"/></symbol>
+        <symbol id="i-eraser" viewBox="0 0 24 24"><path d="M7 21l-4.3-4.3a1.5 1.5 0 0 1 0-2.1L13.6 3.7a1.5 1.5 0 0 1 2.1 0l4.6 4.6a1.5 1.5 0 0 1 0 2.1L10 21z"/><path d="M7 21h14M8 10l6 6"/></symbol>
+        <symbol id="i-fill" viewBox="0 0 24 24"><path d="M19 11l-8-8-8.5 8.5a1.4 1.4 0 0 0 0 2l6 6a1.4 1.4 0 0 0 2 0z"/><path d="M3 12h16M20 15.5s2 2.2 2 3.5a2 2 0 0 1-4 0c0-1.3 2-3.5 2-3.5z"/></symbol>
+        <symbol id="i-gradient" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18" stroke-dasharray="2 2"/></symbol>
+        <symbol id="i-rect" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="2"/></symbol>
+        <symbol id="i-ellipse" viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="9" ry="7.5"/></symbol>
+        <symbol id="i-line" viewBox="0 0 24 24"><path d="M5 19L19 5"/></symbol>
+        <symbol id="i-text" viewBox="0 0 24 24"><path d="M4 7V5h16v2M12 5v14M9 19h6"/></symbol>
+        <symbol id="i-pipette" viewBox="0 0 24 24"><path d="M2 22l1-1h3l9-9M3 21v-3l9-9"/><path d="M15 6l3.4-3.4a2.1 2.1 0 0 1 3 3L18 9l.4.4a2.1 2.1 0 0 1-3 3l-3.8-3.8a2.1 2.1 0 0 1 3-3z"/></symbol>
+        <symbol id="i-swap" viewBox="0 0 24 24"><path d="M16 3l4 4-4 4M20 7H9M8 21l-4-4 4-4M4 17h11"/></symbol>
+        <symbol id="i-reset" viewBox="0 0 24 24"><rect x="3" y="3" width="11" height="11" rx="1.5" fill="currentColor"/><rect x="10" y="10" width="11" height="11" rx="1.5"/></symbol>
+        <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+        <symbol id="i-eye-off" viewBox="0 0 24 24"><path d="M3 3l18 18M10.6 5.1A10 10 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3.2 4M6.6 6.6A17 17 0 0 0 2 12s3.5 7 10 7a9.7 9.7 0 0 0 5.4-1.6M9.9 9.9a3 3 0 0 0 4.2 4.2"/></symbol>
+        <symbol id="i-up" viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></symbol>
+        <symbol id="i-down" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
+        <symbol id="i-merge" viewBox="0 0 24 24"><path d="M3 8l9 5 9-5-9-5z"/><path d="M12 16v5M9 18.5l3 3 3-3"/></symbol>
+        <symbol id="i-flatten" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5z"/><path d="M2 17l10 5 10-5M2 12l10 5 10-5"/></symbol>
+        <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M6 6l1 15h10l1-15M10 11v6M14 11v6"/></symbol>
+        <symbol id="i-duplicate" viewBox="0 0 24 24"><rect x="8" y="8" width="13" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3M14.5 11.5v6M11.5 14.5h6"/></symbol>
+    </svg>
     <div class="app-container">
-        <!-- Top Toolbar -->
-        <div class="toolbar">
-            <div class="toolbar-section">
-                <button class="tool-btn" id="newBtn" title="New Image">
-                    <span>📄</span>
-                </button>
-                <button class="tool-btn" id="openBtn" title="Open Image">
-                    <span>📂</span>
-                </button>
-                <button class="tool-btn" id="importLayerBtn" title="Import as Layer">
-                    <span>📥</span>
-                </button>
-                <button class="tool-btn" id="saveBtn" title="Save Image">
-                    <span>💾</span>
-                </button>
-                <button class="tool-btn" id="imageDimensionsBtn" title="Image Dimensions">
-                    <span>📐</span>
-                </button>
+        <!-- Top Bar -->
+        <header class="toolbar">
+            <div class="brand">
+                <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true">
+                    <defs><linearGradient id="brandGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#c06bff"/><stop offset="1" stop-color="#4f8cff"/></linearGradient></defs>
+                    <rect width="24" height="24" rx="7" fill="url(#brandGrad)"/>
+                    <circle cx="12.5" cy="11.5" r="4.6" fill="none" stroke="#fff" stroke-width="2.2"/>
+                    <circle cx="11" cy="10" r="1.1" fill="#fff"/>
+                </svg>
+                <span>Pura</span>
             </div>
             <div class="toolbar-section">
-                <button class="tool-btn" id="zoomOutBtn" title="Zoom Out">
-                    <span>🔍-</span>
-                </button>
-                <span id="zoomLevel" style="color: #e0e0e0; padding: 0 8px; display: inline-flex; align-items: center;">100%</span>
-                <button class="tool-btn" id="zoomInBtn" title="Zoom In">
-                    <span>🔍+</span>
-                </button>
-                <button class="tool-btn" id="zoomResetBtn" title="Reset Zoom">
-                    <span>1:1</span>
-                </button>
+                <button class="icon-btn" id="newBtn" title="New Image (Alt+N)"><svg class="icon"><use href="#i-new"/></svg></button>
+                <button class="icon-btn" id="openBtn" title="Open Image (Ctrl+O)"><svg class="icon"><use href="#i-open"/></svg></button>
+                <button class="icon-btn needs-workspace" id="importLayerBtn" title="Import Image as Layer (Ctrl+Shift+O)"><svg class="icon"><use href="#i-image"/></svg></button>
+                <button class="icon-btn needs-workspace" id="saveBtn" title="Save / Export (Ctrl+S)"><svg class="icon"><use href="#i-save"/></svg></button>
             </div>
             <div class="toolbar-section">
-                <button class="tool-btn" id="undoBtn" title="Undo">
-                    <span>↶</span>
-                </button>
-                <button class="tool-btn" id="redoBtn" title="Redo">
-                    <span>↷</span>
-                </button>
+                <button class="icon-btn needs-workspace" id="undoBtn" title="Undo (Ctrl+Z)"><svg class="icon"><use href="#i-undo"/></svg></button>
+                <button class="icon-btn needs-workspace" id="redoBtn" title="Redo (Ctrl+Shift+Z / Ctrl+Y)"><svg class="icon"><use href="#i-redo"/></svg></button>
             </div>
-        </div>
+            <div class="toolbar-section">
+                <button class="icon-btn needs-workspace" id="copyBtn" title="Copy (Ctrl+C)"><svg class="icon"><use href="#i-copy"/></svg></button>
+                <button class="icon-btn needs-workspace" id="pasteBtn" title="Paste as New Layer (Ctrl+V)"><svg class="icon"><use href="#i-paste"/></svg></button>
+                <button class="icon-btn needs-workspace" id="cropBtn" title="Crop to Selection (Ctrl+Shift+X)"><svg class="icon"><use href="#i-crop"/></svg></button>
+            </div>
+            <div class="toolbar-spacer"></div>
+            <div class="zoom-pill needs-workspace">
+                <button class="icon-btn" id="zoomOutBtn" title="Zoom Out (Ctrl+-)"><svg class="icon"><use href="#i-minus"/></svg></button>
+                <span id="zoomLevel" class="zoom-level">100%</span>
+                <button class="icon-btn" id="zoomInBtn" title="Zoom In (Ctrl++)"><svg class="icon"><use href="#i-plus"/></svg></button>
+                <span class="pill-sep"></span>
+                <button class="icon-btn text-btn" id="zoomResetBtn" title="Actual Pixels (Ctrl+1)">1:1</button>
+                <button class="icon-btn" id="zoomFitBtn" title="Fit to Window (Ctrl+0)"><svg class="icon"><use href="#i-fit"/></svg></button>
+            </div>
+            <div class="toolbar-spacer"></div>
+            <div class="toolbar-section">
+                <button class="icon-btn" id="shortcutsBtn" title="Keyboard Shortcuts (?)"><svg class="icon"><use href="#i-keyboard"/></svg></button>
+                <button class="icon-btn" id="rightCollapseToggle" title="Toggle Inspector"><svg class="icon"><use href="#i-panel"/></svg></button>
+            </div>
+        </header>
 
         <!-- Tab Bar -->
-        <div class="tab-bar" id="tabBar">
-            <div class="tab active" data-tab-id="start">
-                <span class="tab-name">Start</span>
+        <div class="tab-bar" id="tabBar"></div>
+
+        <!-- Contextual tool options -->
+        <div class="options-bar" id="toolOptionsPanel">
+            <span class="options-tool-name" id="optionsToolName">Brush</span>
+            <div class="tool-options-group" data-for="brush eraser rect circle line">
+                <label for="brushSize">Size</label>
+                <input type="range" id="brushSize" min="1" max="200" value="10">
+                <span class="value"><span id="brushSizeValue">10</span>px</span>
             </div>
+            <div class="tool-options-group" data-for="brush eraser rect circle line fill gradient text">
+                <label for="opacity">Opacity</label>
+                <input type="range" id="opacity" min="1" max="100" value="100">
+                <span class="value"><span id="opacityValue">100</span>%</span>
+            </div>
+            <div class="tool-options-group" data-for="rect circle">
+                <label for="shapeFill">Style</label>
+                <select id="shapeFill">
+                    <option value="stroke">Outline</option>
+                    <option value="fill">Filled</option>
+                    <option value="both">Fill (background) + outline</option>
+                </select>
+            </div>
+            <div class="tool-options-group" data-for="pointer move rectSelect freeformSelect">
+                <button class="chip-btn" id="selectAllBtn" title="Select All (Ctrl+A)">Select all</button>
+                <button class="chip-btn" id="deselectBtn" title="Deselect (Ctrl+D / Esc)">Deselect</button>
+                <span class="hint">Arrow keys nudge with Move (Shift = 10px). Painting stays inside the selection.</span>
+            </div>
+            <div class="tool-options-group" data-for="eyedropper">
+                <span class="hint">Samples the visible image. Alt+click sets the background colour — Alt+click with Brush or Fill picks too.</span>
+            </div>
+            <div class="tool-options-group" data-for="fill">
+                <label for="fillTolerance">Tolerance</label>
+                <input type="range" id="fillTolerance" min="0" max="255" value="32">
+                <span class="value" id="fillToleranceValue">32</span>
+            </div>
+            <div class="tool-options-group" data-for="gradient">
+                <label for="gradientType">Type</label>
+                <select id="gradientType">
+                    <option value="linear">Linear</option>
+                    <option value="radial">Radial</option>
+                </select>
+            </div>
+            <div class="tool-options-group" data-for="text">
+                <label for="fontFamily">Font</label>
+                <select id="fontFamily">
+                    <option value="Arial">Arial</option>
+                    <option value="Helvetica">Helvetica</option>
+                    <option value="Times New Roman">Times New Roman</option>
+                    <option value="Courier New">Courier New</option>
+                    <option value="Georgia">Georgia</option>
+                    <option value="Verdana">Verdana</option>
+                    <option value="Comic Sans MS">Comic Sans MS</option>
+                    <option value="Impact">Impact</option>
+                </select>
+                <label for="fontSize">Size</label>
+                <input type="range" id="fontSize" min="8" max="300" value="24">
+                <span class="value"><span id="fontSizeValue">24</span>px</span>
+                <label class="toggle-chip"><input type="checkbox" id="fontBold"><b>B</b></label>
+                <label class="toggle-chip"><input type="checkbox" id="fontItalic"><i>I</i></label>
+            </div>
+            <span class="options-hint" id="statusHint"></span>
         </div>
 
         <div class="main-content">
-            <!-- Left Sidebar - Tools -->
-            <div class="sidebar left-sidebar" id="leftSidebar">
-                <button class="collapse-toggle" id="leftCollapseToggle">◀</button>
-                
-                <div class="panel-section">
-                    <h3 class="panel-header" data-panel="tools">
-                        <span class="panel-title">Tools</span>
-                        <span class="panel-toggle">▼</span>
-                    </h3>
-                    <div class="panel-content" id="toolsPanel">
-                        <div class="tool-group">
-                            <button class="tool-btn active" data-tool="pointer" title="Pointer (Select Layer)">
-                                <span>↖️</span>
-                            </button>
-                            <button class="tool-btn" data-tool="rectSelect" title="Rectangular Selection">
-                                <span>🔲</span>
-                            </button>
-                            <button class="tool-btn" data-tool="freeformSelect" title="Freeform Selection">
-                                <span>✂️</span>
-                            </button>
-                            <button class="tool-btn" data-tool="move" title="Move Layer">
-                                <span>✋</span>
-                            </button>
-                            <button class="tool-btn" data-tool="brush" title="Brush">
-                                <span>🖌️</span>
-                            </button>
-                            <button class="tool-btn" data-tool="eraser" title="Eraser">
-                                <span>🧹</span>
-                            </button>
-                            <button class="tool-btn" data-tool="fill" title="Fill">
-                                <span>🪣</span>
-                            </button>
-                            <button class="tool-btn" data-tool="gradient" title="Gradient">
-                                <span>🌈</span>
-                            </button>
-                            <button class="tool-btn" data-tool="rect" title="Rectangle">
-                                <span>⬜</span>
-                            </button>
-                            <button class="tool-btn" data-tool="circle" title="Circle">
-                                <span>⭕</span>
-                            </button>
-                            <button class="tool-btn" data-tool="line" title="Line">
-                                <span>📏</span>
-                            </button>
-                            <button class="tool-btn" data-tool="text" title="Text">
-                                <span>T</span>
-                            </button>
-                        </div>
-                    </div>
+            <!-- Tool rail -->
+            <nav class="tool-rail" id="leftSidebar">
+                <button class="rail-btn" data-tool="pointer" title="Pick Layer (A) – click a pixel to activate its layer"><svg class="icon"><use href="#i-pointer"/></svg></button>
+                <button class="rail-btn" data-tool="move" title="Move (V) – moves the selection, or the layer if nothing is selected"><svg class="icon"><use href="#i-move"/></svg></button>
+                <span class="rail-sep"></span>
+                <button class="rail-btn" data-tool="rectSelect" title="Rectangular Selection (M) – Shift for square"><svg class="icon"><use href="#i-select"/></svg></button>
+                <button class="rail-btn" data-tool="freeformSelect" title="Lasso Selection (L)"><svg class="icon"><use href="#i-lasso"/></svg></button>
+                <span class="rail-sep"></span>
+                <button class="rail-btn active" data-tool="brush" title="Brush (B) – Alt+click picks a colour"><svg class="icon"><use href="#i-brush"/></svg></button>
+                <button class="rail-btn" data-tool="eraser" title="Eraser (E)"><svg class="icon"><use href="#i-eraser"/></svg></button>
+                <button class="rail-btn" data-tool="fill" title="Fill (G)"><svg class="icon"><use href="#i-fill"/></svg></button>
+                <button class="rail-btn" data-tool="gradient" title="Gradient (Shift+G)"><svg class="icon"><use href="#i-gradient"/></svg></button>
+                <span class="rail-sep"></span>
+                <button class="rail-btn" data-tool="rect" title="Rectangle (U) – Shift for square, Alt from centre"><svg class="icon"><use href="#i-rect"/></svg></button>
+                <button class="rail-btn" data-tool="circle" title="Ellipse (O) – Shift for circle, Alt from centre"><svg class="icon"><use href="#i-ellipse"/></svg></button>
+                <button class="rail-btn" data-tool="line" title="Line (N) – Shift snaps to 45°"><svg class="icon"><use href="#i-line"/></svg></button>
+                <button class="rail-btn" data-tool="text" title="Text (T)"><svg class="icon"><use href="#i-text"/></svg></button>
+                <button class="rail-btn" data-tool="eyedropper" title="Eyedropper (I) – Alt+click sets background"><svg class="icon"><use href="#i-pipette"/></svg></button>
+
+                <div class="rail-spacer"></div>
+                <div class="color-swatches" id="colorPanel">
+                    <input type="color" id="backgroundColor" value="#ffffff" title="Background colour">
+                    <input type="color" id="foregroundColor" value="#000000" title="Foreground colour">
                 </div>
-                
-                <div class="panel-section">
-                    <h3 class="panel-header" data-panel="toolOptions">
-                        <span class="panel-title">Tool Options</span>
-                        <span class="panel-toggle">▼</span>
-                    </h3>
-                    <div class="panel-content" id="toolOptionsPanel">
-                        <div class="tool-options-group" id="brushOptions" style="display: none;">
-                            <label>Size: <span id="brushSizeValue">10</span>px</label>
-                            <input type="range" id="brushSize" min="1" max="100" value="10">
-                            <label>Opacity: <span id="opacityValue">100</span>%</label>
-                            <input type="range" id="opacity" min="0" max="100" value="100">
-                        </div>
-                        <div class="tool-options-group" id="selectionOptions" style="display: none;">
-                            <button class="tool-btn" id="selectAllBtn" title="Select All (Ctrl+A)">
-                                <span>📋</span>
-                            </button>
-                            <button class="tool-btn" id="deselectBtn" title="Deselect">
-                                <span>✖️</span>
-                            </button>
-                        </div>
-                        <div class="tool-options-group" id="fillOptions" style="display: none;">
-                            <label>Tolerance: <span id="fillToleranceValue">32</span></label>
-                            <input type="range" id="fillTolerance" min="0" max="255" value="32">
-                        </div>
-                        <div class="tool-options-group" id="gradientOptions" style="display: none;">
-                            <label>Type:</label>
-                            <select id="gradientType">
-                                <option value="linear">Linear</option>
-                                <option value="radial">Radial</option>
-                            </select>
-                        </div>
-                        <div class="tool-options-group" id="textOptions" style="display: none;">
-                            <label>Font Size: <span id="fontSizeValue">24</span>px</label>
-                            <input type="range" id="fontSize" min="8" max="200" value="24">
-                            <label>Font Family:</label>
-                            <select id="fontFamily">
-                                <option value="Arial">Arial</option>
-                                <option value="Helvetica">Helvetica</option>
-                                <option value="Times New Roman">Times New Roman</option>
-                                <option value="Courier New">Courier New</option>
-                                <option value="Georgia">Georgia</option>
-                                <option value="Verdana">Verdana</option>
-                                <option value="Comic Sans MS">Comic Sans MS</option>
-                                <option value="Impact">Impact</option>
-                            </select>
-                        </div>
-                    </div>
+                <div class="swatch-actions">
+                    <button class="mini-btn" id="swapColorsBtn" title="Swap Colors (X)"><svg class="icon"><use href="#i-swap"/></svg></button>
+                    <button class="mini-btn" id="resetColorsBtn" title="Default Colors (D)"><svg class="icon"><use href="#i-reset"/></svg></button>
                 </div>
-                
-                <div class="panel-section">
-                    <h3 class="panel-header" data-panel="color">
-                        <span class="panel-title">Color</span>
-                        <span class="panel-toggle">▼</span>
-                    </h3>
-                    <div class="panel-content" id="colorPanel">
-                        <div class="color-picker-group">
-                            <label>Foreground:</label>
-                            <input type="color" id="foregroundColor" value="#000000">
-                            <label>Background:</label>
-                            <input type="color" id="backgroundColor" value="#FFFFFF">
-                        </div>
-                    </div>
-                </div>
-            </div>
+            </nav>
 
             <!-- Canvas Area -->
-            <div class="canvas-container">
-                <!-- Start Screen -->
+            <div class="canvas-container" id="canvasContainer">
                 <div id="startScreen" class="start-screen">
                     <div class="start-content">
-                        <h1>Pura Image Editor</h1>
-                        <p>Create a new image or open an existing one to get started</p>
+                        <img src="img/pura.png" alt="Pura Image Editor" class="start-logo">
+                        <h1>Edit images right in your browser</h1>
+                        <p>Layers, selections, filters and animation export — private, fast, nothing is uploaded.</p>
                         <div class="start-actions">
                             <button class="start-btn" id="startNewBtn">
-                                <span>📄</span>
-                                <div>
-                                    <strong>New Image</strong>
-                                    <small>Create a blank canvas</small>
-                                </div>
+                                <span class="start-icon"><svg class="icon"><use href="#i-new"/></svg></span>
+                                <div><strong>New Image</strong><small>Create a blank canvas</small></div>
                             </button>
                             <button class="start-btn" id="startOpenBtn">
-                                <span>📂</span>
-                                <div>
-                                    <strong>Open Image</strong>
-                                    <small>Load an existing image</small>
-                                </div>
+                                <span class="start-icon"><svg class="icon"><use href="#i-open"/></svg></span>
+                                <div><strong>Open Image</strong><small>PNG, JPEG, WebP, GIF, TIFF, AVIF, QOI…</small></div>
                             </button>
                         </div>
+                        <p class="start-tip">Tip: drop files anywhere, paste with <kbd>Ctrl</kbd>+<kbd>V</kbd>, or press <kbd>?</kbd> for shortcuts</p>
                     </div>
                 </div>
-                
-                <!-- Canvas Wrapper -->
                 <div class="canvas-wrapper" id="canvasWrapper" style="display: none;">
-                    <canvas id="mainCanvas"></canvas>
+                    <div class="layer-bounds" id="layerBounds"></div>
+                    <div class="brush-cursor" id="brushCursor"></div>
                 </div>
+                <div class="drop-overlay" id="dropOverlay">Drop images to open them<br><small>Hold Shift to add them as layers</small></div>
             </div>
 
-            <!-- Right Sidebar - Layers and Effects -->
+            <!-- Right Sidebar -->
             <div class="sidebar right-sidebar" id="rightSidebar">
-                <button class="collapse-toggle" id="rightCollapseToggle">▶</button>
-                
+
                 <div class="panel-section">
                     <h3 class="panel-header" data-panel="layers">
                         <span class="panel-title">Layers</span>
-                        <span class="panel-toggle">▼</span>
+                        <svg class="icon panel-toggle"><use href="#i-down"/></svg>
                     </h3>
                     <div class="panel-content" id="layersSection">
-                        <div class="layers-panel" id="layersPanel">
-                            <div class="layer-item active" data-layer-id="0">
-                                <input type="checkbox" checked class="layer-visibility" data-layer-id="0">
-                                <span class="layer-name">Background</span>
-                                <button class="layer-delete" data-layer-id="0">×</button>
-                            </div>
+                        <div class="layer-properties">
+                            <select id="layerBlendMode" title="Blend mode"></select>
+                            <label class="layer-opacity-control">
+                                <span>Opacity</span>
+                                <span class="value"><span id="layerOpacityValue">100</span>%</span>
+                                <input type="range" id="layerOpacity" min="0" max="100" value="100">
+                            </label>
                         </div>
+                        <div class="layers-panel" id="layersPanel"></div>
                         <div class="layer-controls">
-                            <button class="tool-btn" id="addLayerBtn">+ Add Layer</button>
-                            <button class="tool-btn" id="mergeLayersBtn">Merge Down</button>
+                            <button class="mini-btn" id="addLayerBtn" title="New Layer (Shift+N)"><svg class="icon"><use href="#i-plus"/></svg></button>
+                            <button class="mini-btn" id="duplicateLayerBtn" title="Duplicate Layer (Ctrl+J)"><svg class="icon"><use href="#i-duplicate"/></svg></button>
+                            <button class="mini-btn" id="layerUpBtn" title="Move Layer Up (Ctrl+])"><svg class="icon"><use href="#i-up"/></svg></button>
+                            <button class="mini-btn" id="layerDownBtn" title="Move Layer Down (Ctrl+[)"><svg class="icon"><use href="#i-down"/></svg></button>
+                            <button class="mini-btn" id="mergeLayersBtn" title="Merge Down (Ctrl+E)"><svg class="icon"><use href="#i-merge"/></svg></button>
+                            <button class="mini-btn" id="flattenBtn" title="Flatten Image (Ctrl+Shift+E)"><svg class="icon"><use href="#i-flatten"/></svg></button>
+                            <button class="mini-btn danger" id="deleteLayerBtn" title="Delete Layer"><svg class="icon"><use href="#i-trash"/></svg></button>
+                        </div>
+                        <p class="hint">Double-click a name to rename. Drag to reorder.</p>
+                    </div>
+                </div>
+
+                <div class="panel-section">
+                    <h3 class="panel-header" data-panel="image">
+                        <span class="panel-title">Image</span>
+                        <svg class="icon panel-toggle"><use href="#i-down"/></svg>
+                    </h3>
+                    <div class="panel-content">
+                        <div class="button-grid">
+                            <button class="tool-btn" id="imageDimensionsBtn">Image Size…</button>
+                            <button class="tool-btn" id="cropSelectionBtn">Crop to Selection</button>
+                            <button class="tool-btn" data-image-transform="rotateCW">Rotate 90° ↻</button>
+                            <button class="tool-btn" data-image-transform="rotateCCW">Rotate 90° ↺</button>
+                            <button class="tool-btn" data-image-transform="flipH">Flip Horizontal</button>
+                            <button class="tool-btn" data-image-transform="flipV">Flip Vertical</button>
                         </div>
                     </div>
                 </div>
 
                 <div class="panel-section">
                     <h3 class="panel-header" data-panel="transforms">
-                        <span class="panel-title">Transforms</span>
-                        <span class="panel-toggle">▼</span>
+                        <span class="panel-title">Layer Transform</span>
+                        <svg class="icon panel-toggle"><use href="#i-down"/></svg>
                     </h3>
                     <div class="panel-content" id="transformsPanel">
-                        <div class="transform-controls">
-                            <button class="tool-btn" id="resizeBtn">Resize</button>
-                            <button class="tool-btn" id="rotateBtn">Rotate 90°</button>
-                            <button class="tool-btn" id="flipHBtn">Flip H</button>
-                            <button class="tool-btn" id="flipVBtn">Flip V</button>
+                        <div class="button-grid">
+                            <button class="tool-btn" id="resizeBtn">Resize Layer…</button>
+                            <button class="tool-btn" data-layer-transform="rotate180">Rotate 180°</button>
+                            <button class="tool-btn" data-layer-transform="rotateCW">Rotate 90° ↻</button>
+                            <button class="tool-btn" data-layer-transform="rotateCCW">Rotate 90° ↺</button>
+                            <button class="tool-btn" data-layer-transform="flipH">Flip H</button>
+                            <button class="tool-btn" data-layer-transform="flipV">Flip V</button>
                         </div>
                     </div>
                 </div>
 
                 <div class="panel-section">
                     <h3 class="panel-header" data-panel="effects">
-                        <span class="panel-title">Effects</span>
-                        <span class="panel-toggle">▼</span>
+                        <span class="panel-title">Adjustments &amp; Filters</span>
+                        <svg class="icon panel-toggle"><use href="#i-down"/></svg>
                     </h3>
                     <div class="panel-content" id="effectsPanel">
-                        <div class="effects-panel">
-                            <button class="tool-btn" id="brightnessBtn">Brightness</button>
-                            <button class="tool-btn" id="contrastBtn">Contrast</button>
-                            <button class="tool-btn" id="exposureBtn">Exposure</button>
-                            <button class="tool-btn" id="saturationBtn">Saturation</button>
-                            <button class="tool-btn" id="hueBtn">Hue</button>
-                            <button class="tool-btn" id="blurBtn">Blur</button>
-                            <button class="tool-btn" id="gaussianBlurBtn">Gaussian Blur</button>
-                            <button class="tool-btn" id="medianFilterBtn">Median Filter</button>
-                            <button class="tool-btn" id="sharpenBtn">Sharpen</button>
-                            <button class="tool-btn" id="grayscaleBtn">Grayscale</button>
-                            <button class="tool-btn" id="sepiaBtn">Sepia</button>
-                            <button class="tool-btn" id="invertBtn">Invert</button>
-                        </div>
+                        <p class="hint">Applied to the active layer (only inside the selection, if any).</p>
+                        <div class="button-grid" id="effectButtons"></div>
                     </div>
                 </div>
 
                 <div class="panel-section collapsed">
                     <h3 class="panel-header" data-panel="metadata">
                         <span class="panel-title">Metadata</span>
-                        <span class="panel-toggle">▼</span>
+                        <svg class="icon panel-toggle"><use href="#i-down"/></svg>
                     </h3>
                     <div class="panel-content" id="metadataPanel">
                         <div class="metadata-table">
                             <table id="metadataTable">
-                                <tbody id="metadataTableBody">
-                                    <!-- Metadata rows will be populated here -->
-                                </tbody>
+                                <tbody id="metadataTableBody"></tbody>
                             </table>
                             <button class="tool-btn" id="addMetadataFieldBtn" style="width: 100%; margin-top: 5px;">+ Add Field</button>
                         </div>
@@ -305,19 +324,46 @@
                 </div>
             </div>
         </div>
+
+        <!-- Status Bar -->
+        <div class="status-bar" id="statusBar">
+            <span id="statusPos">–</span>
+            <span id="statusSize">–</span>
+            <span id="statusSelection"></span>
+            <span id="statusLayer"></span>
+            <span class="status-right">Press <kbd>?</kbd> for shortcuts</span>
+        </div>
     </div>
 
-    <!-- File Input (Hidden) -->
-    <input type="file" id="fileInput" accept="image/*" style="display: none;">
-    <input type="file" id="importLayerInput" accept="image/*" style="display: none;">
+    <div class="toasts" id="toasts"></div>
+
+    <input type="file" id="fileInput" accept="image/*,.tif,.tiff,.heic,.avif,.apng,.qoi,.pcx,.ppm,.pgm,.pbm,.pam,.ico,.dng" multiple style="display: none;">
+    <input type="file" id="importLayerInput" accept="image/*,.tif,.tiff,.heic,.avif,.apng,.qoi,.pcx,.ppm,.pgm,.pbm,.pam,.ico,.dng" multiple style="display: none;">
 
     <!-- Modals -->
     <div id="newImageModal" class="modal">
         <div class="modal-content">
             <h2>New Image</h2>
-            <label>Width: <input type="number" id="newWidth" value="800" min="1"></label>
-            <label>Height: <input type="number" id="newHeight" value="600" min="1"></label>
-            <label>Background: <input type="color" id="newBgColor" value="#FFFFFF"></label>
+            <label>Preset:
+                <select id="newPreset">
+                    <option value="">Custom</option>
+                    <option value="800x600">800 × 600</option>
+                    <option value="1280x720">HD 1280 × 720</option>
+                    <option value="1920x1080">Full HD 1920 × 1080</option>
+                    <option value="3840x2160">4K 3840 × 2160</option>
+                    <option value="1080x1080">Square post 1080 × 1080</option>
+                    <option value="1080x1920">Story 1080 × 1920</option>
+                    <option value="1240x1754">A4 @150 dpi 1240 × 1754</option>
+                    <option value="512x512">Icon 512 × 512</option>
+                    <option value="64x64">Pixel art 64 × 64</option>
+                </select>
+            </label>
+            <div class="field-row">
+                <label>Width: <input type="number" id="newWidth" value="800" min="1" max="16384"></label>
+                <label>Height: <input type="number" id="newHeight" value="600" min="1" max="16384"></label>
+            </div>
+            <label>Background: <input type="color" id="newBgColor" value="#ffffff"></label>
+            <label class="inline"><input type="checkbox" id="newTransparent"> Transparent background</label>
             <div class="modal-buttons">
                 <button id="createNewBtn">Create</button>
                 <button id="cancelNewBtn">Cancel</button>
@@ -328,12 +374,11 @@
     <div id="resizeModal" class="modal">
         <div class="modal-content">
             <h2>Resize Layer</h2>
-            <label>Width: <input type="number" id="resizeWidth" min="1"></label>
-            <label>Height: <input type="number" id="resizeHeight" min="1"></label>
-            <label>
-                <input type="checkbox" id="maintainAspect" checked>
-                Maintain Aspect Ratio
-            </label>
+            <div class="field-row">
+                <label>Width: <input type="number" id="resizeWidth" min="1"></label>
+                <label>Height: <input type="number" id="resizeHeight" min="1"></label>
+            </div>
+            <label class="inline"><input type="checkbox" id="maintainAspect" checked> Maintain aspect ratio</label>
             <div class="modal-buttons">
                 <button id="applyResizeBtn">Apply</button>
                 <button id="cancelResizeBtn">Cancel</button>
@@ -341,11 +386,12 @@
         </div>
     </div>
 
-    <div id="effectModal" class="modal">
+    <div id="effectModal" class="modal floating">
         <div class="modal-content">
             <h2 id="effectTitle">Effect</h2>
-            <label id="effectLabel">Amount: <span id="effectValue">50</span></label>
+            <label id="effectLabel">Amount: <span id="effectValue">0</span></label>
             <input type="range" id="effectSlider" min="0" max="100" value="50">
+            <label class="inline"><input type="checkbox" id="effectPreview" checked> Live preview</label>
             <div class="modal-buttons">
                 <button id="applyEffectBtn">Apply</button>
                 <button id="cancelEffectBtn">Cancel</button>
@@ -356,17 +402,32 @@
     <div id="saveModal" class="modal">
         <div class="modal-content">
             <h2>Save Image</h2>
+            <label>Filename:
+                <input type="text" id="saveFilename" value="pura-export">
+            </label>
             <label>Format:
-                <select id="saveFormat" style="width: 100%; padding: 8px; margin-top: 5px; background: #3d3d3d; border: 1px solid #4d4d4d; color: #e0e0e0; border-radius: 4px;">
-                    <option value="png">PNG</option>
-                    <option value="jpeg">JPEG</option>
-                    <option value="webp">WebP</option>
-                    <option value="gif">GIF</option>
-                    <option value="apng">APNG (Animated PNG)</option>
-                    <option value="tiff">TIFF</option>
-                    <option value="bmp">BMP</option>
-                    <option value="heic">HEIC</option>
-                    <option value="avif">AVIF</option>
+                <select id="saveFormat">
+                    <optgroup label="Common">
+                        <option value="png">PNG</option>
+                        <option value="jpeg">JPEG</option>
+                        <option value="webp">WebP</option>
+                        <option value="avif">AVIF</option>
+                        <option value="heic">HEIC</option>
+                    </optgroup>
+                    <optgroup label="Animation / multi-page">
+                        <option value="gif">GIF</option>
+                        <option value="apng">APNG (Animated PNG)</option>
+                        <option value="tiff">TIFF</option>
+                    </optgroup>
+                    <optgroup label="Other">
+                        <option value="bmp">BMP</option>
+                        <option value="ico">ICO (icon, max 256×256)</option>
+                        <option value="qoi">QOI</option>
+                        <option value="pcx">PCX</option>
+                        <option value="ppm">PPM (Netpbm colour)</option>
+                        <option value="pgm">PGM (Netpbm grayscale)</option>
+                        <option value="pbm">PBM (Netpbm black &amp; white)</option>
+                    </optgroup>
                 </select>
             </label>
             <label id="qualityLabel" style="display: none;">Quality: <span id="qualityValue">90</span>
@@ -374,28 +435,19 @@
             </label>
             <div id="tiffOptions" style="display: none;">
                 <label>Compression:
-                    <select id="tiffCompression" style="width: 100%; padding: 8px; margin-top: 5px; background: #3d3d3d; border: 1px solid #4d4d4d; color: #e0e0e0; border-radius: 4px;">
+                    <select id="tiffCompression">
                         <option value="none">None</option>
                         <option value="lzw">LZW</option>
                         <option value="packbits">PackBits</option>
                         <option value="deflate">Deflate</option>
                     </select>
                 </label>
-                <label>
-                    <input type="checkbox" id="tiffGrayscale">
-                    Encode as grayscale
-                </label>
-                <label>
-                    <input type="checkbox" id="tiffRGB">
-                    Encode as RGB (no alpha channel)
-                </label>
+                <label class="inline"><input type="checkbox" id="tiffGrayscale"> Encode as grayscale</label>
+                <label class="inline"><input type="checkbox" id="tiffRGB"> Encode as RGB (no alpha channel)</label>
             </div>
-            <label>
+            <label class="inline" id="multiFrameLabel" style="display: none;">
                 <input type="checkbox" id="saveMultiFrame">
-                Export as animation/multi-page (uses layer durations for GIF/APNG, pages for TIFF)
-            </label>
-            <label>Filename:
-                <input type="text" id="saveFilename" value="pura-export" style="width: 100%; padding: 8px; margin-top: 5px; background: #3d3d3d; border: 1px solid #4d4d4d; color: #e0e0e0; border-radius: 4px;">
+                Export each visible layer as a frame/page (uses layer durations)
             </label>
             <div class="modal-buttons">
                 <button id="applySaveBtn">Save</button>
@@ -406,11 +458,12 @@
 
     <div id="layerDurationModal" class="modal">
         <div class="modal-content">
-            <h2>Set Layer Duration</h2>
+            <h2>Set Frame Duration</h2>
             <label>Duration (milliseconds):
-                <input type="number" id="layerDurationInput" value="100" min="10" step="10" style="width: 100%; padding: 8px; margin-top: 5px; background: #3d3d3d; border: 1px solid #4d4d4d; color: #e0e0e0; border-radius: 4px;">
+                <input type="number" id="layerDurationInput" value="100" min="10" step="10">
             </label>
-            <p style="font-size: 12px; color: #888; margin-top: 10px;">Used for animated GIF/APNG export. Minimum: 10ms, Default: 100ms</p>
+            <label class="inline"><input type="checkbox" id="layerDurationAll"> Apply to all layers</label>
+            <p class="hint">Used for animated GIF/APNG export. Minimum 10 ms.</p>
             <div class="modal-buttons">
                 <button id="applyLayerDurationBtn">Apply</button>
                 <button id="cancelLayerDurationBtn">Cancel</button>
@@ -418,27 +471,32 @@
         </div>
     </div>
 
-    <div id="layerOpacityModal" class="modal">
-        <div class="modal-content">
-            <h2>Set Layer Opacity</h2>
-            <label>Opacity: <span id="layerOpacityValue">100</span>%
-                <input type="range" id="layerOpacityInput" min="0" max="100" value="100" step="1">
-            </label>
-            <div class="modal-buttons">
-                <button id="applyLayerOpacityBtn">Apply</button>
-                <button id="cancelLayerOpacityBtn">Cancel</button>
-            </div>
-        </div>
-    </div>
-
     <div id="imageDimensionsModal" class="modal">
         <div class="modal-content">
-            <h2>Image Dimensions</h2>
-            <label>Width: <input type="number" id="imageDimWidth" min="1"></label>
-            <label>Height: <input type="number" id="imageDimHeight" min="1"></label>
-            <label>
-                <input type="checkbox" id="scaleAllLayers">
-                Scale all layers when changing dimensions
+            <h2>Image Size</h2>
+            <div class="field-row">
+                <label>Width: <input type="number" id="imageDimWidth" min="1" max="16384"></label>
+                <label>Height: <input type="number" id="imageDimHeight" min="1" max="16384"></label>
+            </div>
+            <label class="inline"><input type="checkbox" id="imageDimAspect" checked> Maintain aspect ratio</label>
+            <label>Mode:
+                <select id="imageDimMode">
+                    <option value="canvas">Resize canvas (keep pixels)</option>
+                    <option value="scale">Scale image (resample all layers)</option>
+                </select>
+            </label>
+            <label id="imageDimAnchorLabel">Anchor:
+                <select id="imageDimAnchor">
+                    <option value="0,0">Top left</option>
+                    <option value="0.5,0">Top</option>
+                    <option value="1,0">Top right</option>
+                    <option value="0,0.5">Left</option>
+                    <option value="0.5,0.5" selected>Center</option>
+                    <option value="1,0.5">Right</option>
+                    <option value="0,1">Bottom left</option>
+                    <option value="0.5,1">Bottom</option>
+                    <option value="1,1">Bottom right</option>
+                </select>
             </label>
             <div class="modal-buttons">
                 <button id="applyImageDimensionsBtn">Apply</button>
@@ -451,7 +509,7 @@
         <div class="modal-content">
             <h2>Add Metadata Field</h2>
             <label>Field Name:
-                <input type="text" id="newMetadataFieldName" placeholder="e.g., Keywords" style="width: 100%; padding: 8px; margin-top: 5px; background: #3d3d3d; border: 1px solid #4d4d4d; color: #e0e0e0; border-radius: 4px;">
+                <input type="text" id="newMetadataFieldName" placeholder="e.g., Keywords">
             </label>
             <div class="modal-buttons">
                 <button id="applyAddMetadataFieldBtn">Add</button>
@@ -463,10 +521,76 @@
     <div id="textModal" class="modal">
         <div class="modal-content">
             <h2>Enter Text</h2>
-            <label>Text: <input type="text" id="textInput" placeholder="Enter your text"></label>
+            <label>Text (Shift+Enter for a new line):
+                <textarea id="textInput" rows="3" placeholder="Enter your text"></textarea>
+            </label>
             <div class="modal-buttons">
                 <button id="applyTextBtn">Apply</button>
                 <button id="cancelTextBtn">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="shortcutsModal" class="modal">
+        <div class="modal-content wide">
+            <h2>Keyboard Shortcuts</h2>
+            <div class="shortcuts-grid">
+                <div>
+                    <h4>Tools</h4>
+                    <dl>
+                        <dt>A</dt><dd>Pick layer</dd>
+                        <dt>V</dt><dd>Move</dd>
+                        <dt>M</dt><dd>Rectangular selection</dd>
+                        <dt>L</dt><dd>Lasso selection</dd>
+                        <dt>B</dt><dd>Brush</dd>
+                        <dt>E</dt><dd>Eraser</dd>
+                        <dt>G / Shift+G</dt><dd>Fill / Gradient</dd>
+                        <dt>U / O / N</dt><dd>Rectangle / Ellipse / Line</dd>
+                        <dt>T</dt><dd>Text</dd>
+                        <dt>I</dt><dd>Eyedropper</dd>
+                        <dt>[ / ]</dt><dd>Brush size −/+</dd>
+                        <dt>X / D</dt><dd>Swap / reset colors</dd>
+                        <dt>Space + drag</dt><dd>Pan</dd>
+                    </dl>
+                </div>
+                <div>
+                    <h4>Edit</h4>
+                    <dl>
+                        <dt>Ctrl+Z</dt><dd>Undo</dd>
+                        <dt>Ctrl+Shift+Z / Ctrl+Y</dt><dd>Redo</dd>
+                        <dt>Ctrl+C / X / V</dt><dd>Copy / cut / paste</dd>
+                        <dt>Ctrl+A / Ctrl+D</dt><dd>Select all / deselect</dd>
+                        <dt>Delete</dt><dd>Clear selection</dd>
+                        <dt>Alt+Backspace</dt><dd>Fill selection with foreground</dd>
+                        <dt>Ctrl+Shift+X</dt><dd>Crop to selection</dd>
+                        <dt>Arrows</dt><dd>Nudge (Move tool)</dd>
+                    </dl>
+                    <h4>Layers</h4>
+                    <dl>
+                        <dt>Shift+N</dt><dd>New layer</dd>
+                        <dt>Ctrl+J</dt><dd>Duplicate layer</dd>
+                        <dt>Ctrl+[ / ]</dt><dd>Move layer down / up</dd>
+                        <dt>Ctrl+E</dt><dd>Merge down</dd>
+                        <dt>Ctrl+Shift+E</dt><dd>Flatten</dd>
+                    </dl>
+                </div>
+                <div>
+                    <h4>File &amp; View</h4>
+                    <dl>
+                        <dt>Alt+N</dt><dd>New image</dd>
+                        <dt>Ctrl+O</dt><dd>Open</dd>
+                        <dt>Ctrl+Shift+O</dt><dd>Import as layer</dd>
+                        <dt>Ctrl+S</dt><dd>Save / export</dd>
+                        <dt>Ctrl + / −</dt><dd>Zoom in / out</dd>
+                        <dt>Ctrl+wheel</dt><dd>Zoom at cursor</dd>
+                        <dt>Ctrl+0</dt><dd>Fit to window</dd>
+                        <dt>Ctrl+1</dt><dd>Actual pixels</dd>
+                        <dt>Esc</dt><dd>Close dialog / deselect</dd>
+                    </dl>
+                </div>
+            </div>
+            <div class="modal-buttons">
+                <button id="closeShortcutsBtn">Close</button>
             </div>
         </div>
     </div>

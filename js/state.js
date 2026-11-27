@@ -1,20 +1,26 @@
 // State Management Module
 
-// Global state for managing workspaces
 export const globalState = {
     workspaces: new Map(),
     activeWorkspaceId: 'start',
     nextWorkspaceId: 1
 };
 
-// Create a workspace state object
+// Tool settings that carry over when switching between workspaces
+export const SHARED_TOOL_SETTINGS = [
+    'tool', 'foregroundColor', 'backgroundColor', 'brushSize', 'opacity',
+    'fillTolerance', 'gradientType', 'shapeFill', 'fontSize', 'fontFamily',
+    'fontBold', 'fontItalic'
+];
+
 export function createWorkspaceState(canvas, ctx) {
     return {
-        canvas: canvas,
-        ctx: ctx,
+        name: 'Untitled',
+        canvas,
+        ctx,
         layers: [],
         activeLayerIndex: 0,
-        tool: 'pointer',
+        tool: 'brush',
         isDrawing: false,
         startX: 0,
         startY: 0,
@@ -24,55 +30,36 @@ export function createWorkspaceState(canvas, ctx) {
         opacity: 1.0,
         fillTolerance: 32,
         gradientType: 'linear',
+        shapeFill: 'stroke',
         history: [],
         historyIndex: -1,
         maxHistory: 50,
+        dirty: false,
         metadata: {
-            // Basic fields
             title: '',
             author: '',
             description: '',
             copyright: '',
-            // Standard EXIF fields
-            artist: '',
-            software: 'Pura',
-            dateTime: '',
-            make: '',
-            model: '',
-            orientation: '',
-            xResolution: '',
-            yResolution: '',
-            resolutionUnit: '',
-            keywords: '',
-            comment: ''
+            software: 'Pura'
         },
-        customMetadataFields: [], // Array of custom field names
         previewCanvas: null,
         previewCtx: null,
-        moveOffsetX: 0,
-        moveOffsetY: 0,
-        // Selection state
+        selectionCanvas: null,
+        selectionCtx: null,
+        // Selection (coordinates are local to the active layer)
         selection: null, // {x, y, width, height, imageData}
-        selectionPath: null, // For freeform selection (array of points)
-        selectionType: 'rect', // 'rect' or 'freeform'
-        // Zoom state
+        selectionPath: null, // freeform polygon points
+        selectionType: 'rect',
         zoom: 1.0,
-        zoomMin: 0.1,
-        zoomMax: 10.0,
-        // Text tool state
+        zoomMin: 0.05,
+        zoomMax: 32.0,
         fontSize: 24,
-        fontFamily: 'Arial'
+        fontFamily: 'Arial',
+        fontBold: false,
+        fontItalic: false
     };
 }
 
-// Get current workspace state
 export function getState() {
     return globalState.workspaces.get(globalState.activeWorkspaceId);
-}
-
-// Application state (for backwards compatibility, now points to active workspace)
-export let state = null;
-
-export function setState(newState) {
-    state = newState;
 }

@@ -1,371 +1,236 @@
 // File I/O operations module
-import { Image } from './constants.js';
-import { MULTI_FRAME_FORMATS } from './constants.js';
+import { Image, MULTI_FRAME_FORMATS } from './constants.js';
+import { createLayerObject, createLayer, getFlattenedCanvas, createCanvas, reindexLayers } from './layers.js';
 
-export async function openImage(createWorkspace, createLayerObject, globalState, mergeMetadata, updateLayersPanel, updateMetadataTable, composeLayers, saveState) {
-    const input = document.getElementById('fileInput');
-    input.click();
+export const FORMATS = {
+    png: { mime: 'image/png', ext: 'png' },
+    jpeg: { mime: 'image/jpeg', ext: 'jpg', quality: true },
+    webp: { mime: 'image/webp', ext: 'webp', quality: true },
+    gif: { mime: 'image/gif', ext: 'gif' },
+    apng: { mime: 'image/apng', ext: 'apng' },
+    tiff: { mime: 'image/tiff', ext: 'tiff' },
+    bmp: { mime: 'image/bmp', ext: 'bmp' },
+    heic: { mime: 'image/heic', ext: 'heic', quality: true },
+    avif: { mime: 'image/avif', ext: 'avif', quality: true },
+    ico: { mime: 'image/x-icon', ext: 'ico' },
+    qoi: { mime: 'image/qoi', ext: 'qoi' },
+    pcx: { mime: 'image/x-pcx', ext: 'pcx' },
+    ppm: { mime: 'image/x-portable-pixmap', ext: 'ppm' },
+    pgm: { mime: 'image/x-portable-graymap', ext: 'pgm' },
+    pbm: { mime: 'image/x-portable-bitmap', ext: 'pbm' }
+};
+
+function frameToCanvas(frame) {
+    const canvas = createCanvas(frame.width, frame.height);
+    canvas.getContext('2d').putImageData(
+        new ImageData(new Uint8ClampedArray(frame.data), frame.width, frame.height), 0, 0);
+    return canvas;
 }
 
-export async function handleFileUpload(e, createWorkspace, createLayerObject, globalState, mergeMetadata, updateLayersPanel, updateMetadataTable, composeLayers, saveState) {
-    const file = e.target.files[0];
-    if (!file) return;
-    
-    const arrayBuffer = await file.arrayBuffer();
-    const uint8Array = new Uint8Array(arrayBuffer);
-    
+function framesOf(image) {
+    return image.frames && image.frames.length > 1 ? image.frames : [image];
+}
+
+// Frames of animated/multi-page files are positioned inside the logical canvas
+function frameOffset(frame) {
+    return { x: frame.frameMetadata?.left || 0, y: frame.frameMetadata?.top || 0 };
+}
+
+function frameDuration(frame) {
+    return frame.duration ?? frame.frameMetadata?.delay;
+}
+
+// Decode a file, returning { width, height, frames, metadata } for multi-frame
+// files (GIF, APNG, multi-page TIFF) and a single Image otherwise
+async function decodeFile(file) {
+    const data = new Uint8Array(await file.arrayBuffer());
     try {
-        const image = await Image.read(uint8Array);
-        
-        // Check if image has multiple frames
-        const isMultiFrame = image.frames && image.frames.length > 1;
-        
-        let width, height;
-        
-        if (isMultiFrame) {
-            // Find largest frame dimensions
-            let maxWidth = 0;
-            let maxHeight = 0;
-            for (const frame of image.frames) {
-                if (frame.width > maxWidth) maxWidth = frame.width;
-                if (frame.height > maxHeight) maxHeight = frame.height;
-            }
-            width = maxWidth;
-            height = maxHeight;
-        } else {
-            width = image.width;
-            height = image.height;
+        const multi = await Image.readFrames(data);
+        if (multi.frames.length > 1) return multi;
+    } catch {
+        // Not a multi-frame format
+    }
+    return Image.read(data);
+}
+
+export function openImage() {
+    document.getElementById('fileInput').click();
+}
+
+// Open each file in its own workspace (app: createWorkspace, getState, mergeMetadata, refresh, fitToScreen)
+export async function openFiles(files, app) {
+    for (const file of files) {
+        try {
+            const image = await decodeFile(file);
+            const frames = framesOf(image);
+            const width = image.width || Math.max(...frames.map(f => f.width + frameOffset(f).x));
+            const height = image.height || Math.max(...frames.map(f => f.height + frameOffset(f).y));
+
+            app.createWorkspace(file.name, width, height, 'transparent');
+            const ws = app.getState();
+            ws.layers = frames.map((frame, i) => {
+                const name = frames.length > 1 ? `Frame ${i + 1}` : file.name;
+                const layer = createLayerObject(ws, name, i === 0);
+                if (frameDuration(frame) !== undefined) layer.duration = frameDuration(frame);
+                const { x, y } = frameOffset(frame);
+                layer.ctx.drawImage(frameToCanvas(frame), x, y);
+                return layer;
+            });
+            reindexLayers(ws);
+            ws.activeLayerIndex = ws.layers.length - 1;
+            if (image.metadata) ws.metadata = app.mergeMetadata(ws.metadata, image.metadata);
+
+            ws.history = [];
+            ws.historyIndex = -1;
+            app.refresh();
+            app.saveState();
+            ws.dirty = false;
+            app.fitToScreen(true);
+        } catch (error) {
+            console.error('Error loading image:', error);
+            app.toast(`Could not open "${file.name}": ${error.message || 'unsupported file'}`, 'error');
         }
-        
-        // Create new workspace
-        const workspaceId = createWorkspace(file.name, width, height, 'transparent');
-        const workspaceState = globalState.workspaces.get(workspaceId);
-        
-        // Clear the default background layer
-        workspaceState.layers = [];
-        
-        if (isMultiFrame) {
-            // Load each frame as a separate layer
-            for (const [i, frame] of image.frames.entries()) {
-                const layer = createLayerObject(workspaceState, `${file.name} - Frame ${i + 1}`);
-                
-                // Set duration if available
-                if (frame.duration !== undefined) {
-                    layer.duration = frame.duration;
+    }
+}
+
+export function importAsLayer() {
+    document.getElementById('importLayerInput').click();
+}
+
+// Add each file (and each frame) as a new layer, centred on the canvas, keeping its full size
+export async function importFilesAsLayers(files, state, app) {
+    for (const file of files) {
+        try {
+            const image = await decodeFile(file);
+            const frames = framesOf(image);
+            frames.forEach((frame, i) => {
+                const name = frames.length > 1 ? `${file.name} - Frame ${i + 1}` : file.name;
+                let source = frameToCanvas(frame);
+                if (frames.length > 1) {
+                    const full = createCanvas(image.width, image.height);
+                    const { x, y } = frameOffset(frame);
+                    full.getContext('2d').drawImage(source, x, y);
+                    source = full;
                 }
-                
-                // Convert frame data to ImageData and draw
-                const imageData = new ImageData(
-                    new Uint8ClampedArray(frame.data),
-                    frame.width,
-                    frame.height
-                );
-                layer.ctx.putImageData(imageData, 0, 0);
-                
-                workspaceState.layers.push(layer);
-            }
-            workspaceState.activeLayerIndex = 0;
-        } else {
-            // Single frame image - create layer with the loaded image
-            const newLayer = createLayerObject(workspaceState, file.name);
-            
-            // Convert image data to ImageData and draw
-            const imageData = new ImageData(
-                new Uint8ClampedArray(image.data),
-                image.width,
-                image.height
-            );
-            newLayer.ctx.putImageData(imageData, 0, 0);
-            
-            workspaceState.layers.push(newLayer);
-            workspaceState.activeLayerIndex = 0;
+                addCanvasAsLayer(state, source, name, frameDuration(frame));
+            });
+            app.refresh();
+            app.saveState();
+        } catch (error) {
+            console.error('Error importing layer:', error);
+            app.toast(`Could not import "${file.name}": ${error.message || 'unsupported file'}`, 'error');
         }
-        
-        // Re-index layers
-        workspaceState.layers.forEach((layer, index) => {
-            layer.id = index;
-        });
-        
-        // Load metadata from image if available
-        if (image.metadata) {
-            workspaceState.metadata = mergeMetadata(workspaceState.metadata, image.metadata);
-        }
-        
-        updateLayersPanel();
-        updateMetadataTable();
-        composeLayers();
-        saveState();
-    } catch (error) {
-        console.error('Error loading image:', error);
-        alert('Error loading image. Please try a different file.');
     }
 }
 
-export async function importAsLayer(globalState) {
-    // Check if we're in a workspace
-    if (globalState.activeWorkspaceId === 'start') {
-        alert('Please create or open an image first before importing layers.');
-        return;
-    }
-    
-    const input = document.getElementById('importLayerInput');
-    input.click();
+export function addCanvasAsLayer(state, source, name, duration, x, y) {
+    const layer = createLayer(state, name, false, source.width, source.height);
+    layer.ctx.drawImage(source, 0, 0);
+    layer.offsetX = Math.round(x ?? (state.canvas.width - source.width) / 2);
+    layer.offsetY = Math.round(y ?? (state.canvas.height - source.height) / 2);
+    if (duration !== undefined) layer.duration = duration;
+    return layer;
 }
 
-export async function handleImportLayer(e, globalState, createLayer, composeLayers, saveState) {
-    const file = e.target.files[0];
-    if (!file) return;
-    
-    // Check if we're in a workspace
-    if (globalState.activeWorkspaceId === 'start') {
-        alert('Please create or open an image first before importing layers.');
-        return;
-    }
-    
-    const arrayBuffer = await file.arrayBuffer();
-    const uint8Array = new Uint8Array(arrayBuffer);
-    
-    try {
-        const image = await Image.read(uint8Array);
-        
-        // Check if image has multiple frames
-        const isMultiFrame = image.frames && image.frames.length > 1;
-        
-        if (isMultiFrame) {
-            // Import each frame as a separate layer
-            for (const [i, frame] of image.frames.entries()) {
-                const layer = createLayer(`${file.name} - Frame ${i + 1}`);
-                
-                // Set duration if available
-                if (frame.duration !== undefined) {
-                    layer.duration = frame.duration;
-                }
-                
-                // Convert frame data to ImageData and draw
-                // Note: We don't change canvas dimensions, just draw the image
-                const imageData = new ImageData(
-                    new Uint8ClampedArray(frame.data),
-                    frame.width,
-                    frame.height
-                );
-                
-                // Create temporary canvas to hold the image
-                const tempCanvas = document.createElement('canvas');
-                tempCanvas.width = frame.width;
-                tempCanvas.height = frame.height;
-                const tempCtx = tempCanvas.getContext('2d');
-                tempCtx.putImageData(imageData, 0, 0);
-                
-                // Draw onto layer canvas (may be clipped if image is larger)
-                layer.ctx.drawImage(tempCanvas, 0, 0);
-            }
-        } else {
-            // Single frame image - create layer with the loaded image
-            const newLayer = createLayer(file.name);
-            
-            // Convert image data to ImageData
-            const imageData = new ImageData(
-                new Uint8ClampedArray(image.data),
-                image.width,
-                image.height
-            );
-            
-            // Create temporary canvas to hold the image
-            const tempCanvas = document.createElement('canvas');
-            tempCanvas.width = image.width;
-            tempCanvas.height = image.height;
-            const tempCtx = tempCanvas.getContext('2d');
-            tempCtx.putImageData(imageData, 0, 0);
-            
-            // Draw onto layer canvas (may be clipped if image is larger)
-            newLayer.ctx.drawImage(tempCanvas, 0, 0);
-        }
-        
-        composeLayers();
-        saveState();
-    } catch (error) {
-        console.error('Error importing layer:', error);
-        alert('Error importing layer. Please try a different file.');
-    }
-    
-    // Clear the input so the same file can be imported again
-    e.target.value = '';
-}
-
-export async function saveImage() {
-    // Show save dialog instead of immediately saving
-    const modal = document.getElementById('saveModal');
-    modal.classList.add('active');
+export function saveImage(state) {
+    const base = (state.name || 'pura-export').replace(/\.[a-z0-9]+$/i, '');
+    const filenameInput = document.getElementById('saveFilename');
+    if (!filenameInput.dataset.userEdited) filenameInput.value = base;
+    document.getElementById('saveModal').classList.add('active');
 }
 
 function buildTiffOptions() {
-    const tiffCompression = document.getElementById('tiffCompression').value;
-    const tiffGrayscale = document.getElementById('tiffGrayscale').checked;
-    const tiffRGB = document.getElementById('tiffRGB').checked;
-    
-    const tiffOptions = {};
-    if (tiffCompression && tiffCompression !== 'none') {
-        tiffOptions.compression = tiffCompression;
-    }
-    // Grayscale takes precedence over RGB if both are checked
-    if (tiffGrayscale) {
-        tiffOptions.grayscale = true;
-    } else if (tiffRGB) {
-        tiffOptions.rgb = true;
-    }
-    
-    return tiffOptions;
+    const compression = document.getElementById('tiffCompression').value;
+    const options = {};
+    if (compression && compression !== 'none') options.compression = compression;
+    if (document.getElementById('tiffGrayscale').checked) options.grayscale = true;
+    else if (document.getElementById('tiffRGB').checked) options.rgb = true;
+    return options;
 }
 
-export async function applySaveImage(state, hasMetadata, cleanMetadataForExport, closeModal) {
-    try {
-        const format = document.getElementById('saveFormat').value;
-        const quality = parseInt(document.getElementById('saveQuality').value);
-        const multiFrame = document.getElementById('saveMultiFrame').checked;
-        const filename = document.getElementById('saveFilename').value || 'pura-export';
-        
-        let fileData;
-        let mimeType;
-        let extension;
-        
-        if (multiFrame && MULTI_FRAME_FORMATS.includes(format)) {
-            // Multi-frame export
-            const frames = [];
-            
-            for (const layer of state.layers) {
-                if (!layer.visible) continue;
-                
-                // Create a temporary canvas to render this layer
-                const tempCanvas = document.createElement('canvas');
-                tempCanvas.width = state.canvas.width;
-                tempCanvas.height = state.canvas.height;
-                const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
-                
-                // Draw the layer
-                tempCtx.globalAlpha = layer.opacity;
-                tempCtx.drawImage(layer.canvas, 0, 0);
-                tempCtx.globalAlpha = 1.0;
-                
-                const imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
-                
-                frames.push({
-                    width: tempCanvas.width,
-                    height: tempCanvas.height,
-                    data: new Uint8Array(imageData.data),
-                    frameMetadata: {
-                        delay: layer.duration
-                    }
-                });
-            }
-            
-            // Create MultiFrameImageData object
-            const multiFrameImageData = {
-                width: state.canvas.width,
-                height: state.canvas.height,
-                frames: frames,
-                metadata: hasMetadata(state.metadata) ? cleanMetadataForExport(state.metadata) : undefined
+function encodeOptions(format, quality) {
+    if (format === 'tiff') return buildTiffOptions();
+    if (FORMATS[format]?.quality) return { quality: quality / 100 };
+    return undefined;
+}
+
+// Render one layer at its position into a full-canvas-sized frame
+function layerFrame(state, layer) {
+    const canvas = createCanvas(state.canvas.width, state.canvas.height);
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    ctx.globalAlpha = layer.opacity;
+    ctx.drawImage(layer.canvas, layer.offsetX || 0, layer.offsetY || 0);
+    return ctx.getImageData(0, 0, canvas.width, canvas.height);
+}
+
+export async function encodeImage(state, { format, quality = 90, multiFrame = false, metadata }) {
+    const info = FORMATS[format] || FORMATS.png;
+    const options = encodeOptions(format, quality);
+
+    if (multiFrame && MULTI_FRAME_FORMATS.includes(format)) {
+        const visible = state.layers.filter(l => l.visible);
+        if (!visible.length) throw new Error('No visible layers to export');
+        const frames = visible.map(layer => {
+            const data = layerFrame(state, layer);
+            return {
+                width: data.width,
+                height: data.height,
+                data: new Uint8Array(data.data.buffer),
+                frameMetadata: { delay: layer.duration }
             };
-            
-            // Encode based on format using Image.encodeFrames
-            if (format === 'gif') {
-                fileData = await Image.encodeFrames('gif', multiFrameImageData);
-                mimeType = 'image/gif';
-                extension = 'gif';
-            } else if (format === 'apng') {
-                fileData = await Image.encodeFrames('apng', multiFrameImageData);
-                mimeType = 'image/apng';
-                extension = 'apng';
-            } else if (format === 'tiff') {
-                const tiffOptions = buildTiffOptions();
-                fileData = await Image.encodeFrames('tiff', multiFrameImageData, tiffOptions);
-                mimeType = 'image/tiff';
-                extension = 'tiff';
-            }
-        } else {
-            // Single frame export - compose all layers
-            const imageData = state.ctx.getImageData(0, 0, state.canvas.width, state.canvas.height);
-            
-            // Create Image instance from canvas data
-            const image = Image.fromRGBA(
-                state.canvas.width,
-                state.canvas.height,
-                new Uint8Array(imageData.data)
-            );
-            
-            // Apply metadata if available using setMetadata method
-            if (hasMetadata(state.metadata)) {
-                // Clean metadata - remove null/undefined/empty values
-                const cleanMetadata = cleanMetadataForExport(state.metadata);
-                image.setMetadata(cleanMetadata, false);
-            }
-            
-            // Save in selected format
-            switch (format) {
-                case 'png':
-                    fileData = await image.save('png');
-                    mimeType = 'image/png';
-                    extension = 'png';
-                    break;
-                case 'jpeg':
-                    fileData = await image.save('jpeg', { quality: quality / 100 });
-                    mimeType = 'image/jpeg';
-                    extension = 'jpg';
-                    break;
-                case 'webp':
-                    fileData = await image.save('webp', { quality: quality / 100 });
-                    mimeType = 'image/webp';
-                    extension = 'webp';
-                    break;
-                case 'gif':
-                    fileData = await image.save('gif');
-                    mimeType = 'image/gif';
-                    extension = 'gif';
-                    break;
-                case 'apng':
-                    fileData = await image.save('apng');
-                    mimeType = 'image/apng';
-                    extension = 'apng';
-                    break;
-                case 'tiff':
-                    const tiffOptions = buildTiffOptions();
-                    fileData = await image.save('tiff', tiffOptions);
-                    mimeType = 'image/tiff';
-                    extension = 'tiff';
-                    break;
-                case 'bmp':
-                    fileData = await image.save('bmp');
-                    mimeType = 'image/bmp';
-                    extension = 'bmp';
-                    break;
-                case 'heic':
-                    fileData = await image.save('heic', { quality: quality / 100 });
-                    mimeType = 'image/heic';
-                    extension = 'heic';
-                    break;
-                case 'avif':
-                    fileData = await image.save('avif', { quality: quality / 100 });
-                    mimeType = 'image/avif';
-                    extension = 'avif';
-                    break;
-                default:
-                    fileData = await image.save('png');
-                    mimeType = 'image/png';
-                    extension = 'png';
-            }
-        }
-        
-        // Create download link
-        const blob = new Blob([fileData], { type: mimeType });
-        const url = URL.createObjectURL(blob);
+        });
+        const data = await Image.encodeFrames(format, {
+            width: state.canvas.width,
+            height: state.canvas.height,
+            frames,
+            metadata
+        }, options);
+        return { data, ...info };
+    }
+
+    const flat = getFlattenedCanvas(state);
+    const imageData = flat.getContext('2d').getImageData(0, 0, flat.width, flat.height);
+    const image = Image.fromRGBA(flat.width, flat.height, new Uint8Array(imageData.data.buffer));
+    if (metadata) image.setMetadata(metadata, false);
+    const data = await image.save(format in FORMATS ? format : 'png', options);
+    return { data, ...info };
+}
+
+export async function applySaveImage(state, hasMetadata, cleanMetadataForExport, closeModal, toast) {
+    const button = document.getElementById('applySaveBtn');
+    try {
+        button.disabled = true;
+        button.textContent = 'Saving…';
+        const format = document.getElementById('saveFormat').value;
+        const filename = document.getElementById('saveFilename').value.trim() || 'pura-export';
+        const { data, mime, ext } = await encodeImage(state, {
+            format,
+            quality: parseInt(document.getElementById('saveQuality').value),
+            multiFrame: document.getElementById('saveMultiFrame').checked,
+            metadata: hasMetadata(state.metadata) ? cleanMetadataForExport(state.metadata) : undefined
+        });
+
+        const url = URL.createObjectURL(new Blob([data], { type: mime }));
         const a = document.createElement('a');
         a.href = url;
-        a.download = `${filename}.${extension}`;
+        a.download = `${filename}.${ext}`;
         a.click();
-        URL.revokeObjectURL(url);
-        
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+
+        state.dirty = false;
         closeModal('saveModal');
+        toast?.(`Saved ${filename}.${ext} (${formatBytes(data.length)})`);
     } catch (error) {
         console.error('Error saving image:', error);
-        alert('Error saving image: ' + error.message);
+        toast?.('Error saving image: ' + error.message, 'error');
+    } finally {
+        button.disabled = false;
+        button.textContent = 'Save';
     }
+}
+
+function formatBytes(n) {
+    if (n < 1024) return `${n} B`;
+    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+    return `${(n / 1024 / 1024).toFixed(2)} MB`;
 }
