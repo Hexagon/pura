@@ -93,7 +93,8 @@ html {
    Top bar
    ========================================================================== */
 .toolbar {
-    height: 48px;
+    height: calc(48px + env(safe-area-inset-top));
+    padding-top: env(safe-area-inset-top) !important;
     display: flex;
     align-items: center;
     gap: 6px;
